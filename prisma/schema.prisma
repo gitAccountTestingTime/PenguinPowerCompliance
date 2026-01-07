@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                     String                @id @default(uuid())
+  email                  String                @unique
+  password               String
+  name                   String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  todoItems              TodoItem[]
+  complianceSubmissions  ComplianceSubmission[]
+}
+
+model TodoItem {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Link to resources or submissions
+  relatedSubmissionId String?
+  relatedSubmission   ComplianceSubmission? @relation(fields: [relatedSubmissionId], references: [id])
+}
+
+model ComplianceSubmission {
+  id                    String     @id @default(uuid())
+  complianceType        String     // e.g., "SOS Registration", "Tax Filing", etc.
+  state                 String     // Two-letter state code
+  stateAgency           String     // e.g., "Secretary of State", "Department of Revenue"
+  entityName            String?    // Company/entity name
+  registrationNumber    String?
+  filingDate            DateTime?
+  expirationDate        DateTime?
+  status                String     @default("ACTIVE") // ACTIVE, EXPIRED, PENDING
+  
+  // Links (not storing actual sensitive data)
+  filingStorageLink     String?    // Link to Sharepoint, Google Drive, etc.
+  compliancePageLink    String?    // Link to state compliance portal
+  passwordManagerLink   String?    // Link to password manager entry
+  
+  notes                 String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  todoItems             TodoItem[]
+}
+
+model StateResource {
+  id                String   @id @default(uuid())
+  state             String   // Two-letter state code
+  complianceType    String   // Type of compliance submission
+  title             String
+  description       String   // Detailed guide/process description
+  requiredDocuments String?  // JSON array of required documents
+  filingFrequency   String?  // e.g., "Annual", "Biennial"
+  fees              String?
+  portalLink        String?
+  additionalNotes   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model NexusData {
+  id              String   @id @default(uuid())
+  userId          String
+  fileName        String
+  fileType        String   // e.g., "payroll", "census"
+  uploadDate      DateTime @default(now())
+  analysisResults String   // JSON string containing nexus analysis
+  recommendations String?  // JSON string containing recommended actions
+  processed       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
