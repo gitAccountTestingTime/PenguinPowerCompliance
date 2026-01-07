@@ -1,0 +1,26 @@
+The goal is to create a state compliance manager command center web application to help companies manage and track the various state agency compliance registrations their company requires.  
+The goal is to create a manageble central repository of related information (such as links, process descriptions, etc.) to allow for companies/groups to manage the information cleanly regardless of turnover, job changes, etc. 
+It should not store any type of sensitive information beyond managing the user's login, but instead should help the user determine what type of submissions are required, help them track their companies submitted/active compliance management items, allowing the users to add relevant items such as a link to a password manager that stores the actual credentials for the compliance sites, etc. Below are the specifications and other requirements.
+
+Tech Stack: Suggested tech stack (open to change/advice as needed): typescript front end with node.js backend with postgres database. Prisma ORM should be used to integrate with database. Use in memory database for local development. 
+
+Log In Page: User should be prompted to login if arriving on any page without having validated their credentials.  For now, login should be validated purely against the internal database.
+
+Home Page: Default landing page for authenticated users. The home page should contain:
+	- Navigation to other base pages.
+	- Any items that require the user's immediate attention. Example: Potential risks such as unregistered or expiring registartions with state SOS.
+	- Any items added to the user's To-do list.
+	
+Determine Nexus Page: Should be able to ingest files/data such as census or payroll and suggest the appropriate actions required to keep the company compliant with state needs. Should include the option to add recommended items to the user's to-do list that displays on the home page. Manual additions to the user's to-do list should be supported as well.
+
+Existing Compliance Submissions Page: Should provide the user a way to manage their existing submitted compliance items. This should not store any of the actual sensitive information related to the compliance submission, but instead provide information allowing the user to record and later look up what their entity's submitted compliance items are. Data should include things like:
+	- What type of compliance submission (to which state agency) it is.
+	- The State entity the compliance was submitted to.
+	- A link to the location where the previous filing is stored (Sharepoint, google drive, etc.). We do not store the files, simply give the user a place to record where they are stored.
+	- A link to the relevant entity compliance page to view the submission. We do not handle the submission, simply let the user record where the compliance was submitted.
+	- A link to the user's choice of password management tool that contains the credentials used to access the relevant entity compliance page. We do not store the credentials, simply give the user a way to link to the appropriate set for future reference.
+		
+
+Submission Resources Page:
+	- Should provide details and guides about various submission processes. To start with, organize the information/guides by type of compliance submission and state.  There should be a record for each state that details the basic state filing process, such as what items are needed to complete the process. 
+    This data should be accessible/searchable through this page, but also accessible to the user when working on the task through a to-do item or the determine nexus page.

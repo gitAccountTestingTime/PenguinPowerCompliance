@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getTodos, updateTodo, deleteTodo, getExpiringSubmissions } from '../services/api';
+import { getTodos, updateTodo, deleteTodo, getExpiringSubmissions, createSubmission, getResources } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface Todo {
@@ -9,6 +9,12 @@ interface Todo {
   priority: string;
   status: string;
   dueDate: string | null;
+  relatedSubmission?: {
+    id: string;
+    complianceType: string;
+    state: string;
+    stateAgency: string;
+  };
 }
 
 interface Submission {
@@ -18,11 +24,45 @@ interface Submission {
   expirationDate: string;
 }
 
+interface ComplianceFormData {
+  complianceType: string;
+  state: string;
+  stateAgency: string;
+  entityName: string;
+  registrationNumber: string;
+  filingDate: string;
+  expirationDate: string;
+  status: string;
+  filingStorageLink: string;
+  compliancePageLink: string;
+  passwordManagerLink: string;
+  notes: string;
+}
+
+const emptyCompliance: ComplianceFormData = {
+  complianceType: '',
+  state: '',
+  stateAgency: '',
+  entityName: '',
+  registrationNumber: '',
+  filingDate: '',
+  expirationDate: '',
+  status: 'ACTIVE',
+  filingStorageLink: '',
+  compliancePageLink: '',
+  passwordManagerLink: '',
+  notes: '',
+};
+
 function Home() {
   const navigate = useNavigate();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [expiringSubmissions, setExpiringSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [complianceForm, setComplianceForm] = useState<ComplianceFormData>(emptyCompliance);
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
+  const [relatedResource, setRelatedResource] = useState<any>(null);
 
   useEffect(() => {
     fetchData();
@@ -61,6 +101,61 @@ function Home() {
       } catch (error) {
         console.error('Error deleting todo:', error);
       }
+    }
+  };
+
+  const handleOpenComplianceModal = async (todo: Todo) => {
+    setSelectedTodo(todo);
+    
+    // Pre-populate form from related submission if available
+    const formData = { ...emptyCompliance };
+    
+    if (todo.relatedSubmission) {
+      formData.complianceType = todo.relatedSubmission.complianceType;
+      formData.state = todo.relatedSubmission.state;
+      formData.stateAgency = todo.relatedSubmission.stateAgency;
+      
+      // Try to fetch related resource for additional guidance
+      try {
+        const resourcesRes = await getResources({
+          state: todo.relatedSubmission.state,
+          complianceType: todo.relatedSubmission.complianceType,
+        });
+        if (resourcesRes.data && resourcesRes.data.length > 0) {
+          setRelatedResource(resourcesRes.data[0]);
+        }
+      } catch (error) {
+        console.error('Error fetching related resource:', error);
+      }
+    }
+    
+    setComplianceForm(formData);
+    setShowComplianceModal(true);
+  };
+
+  const handleCloseComplianceModal = () => {
+    setShowComplianceModal(false);
+    setComplianceForm(emptyCompliance);
+    setSelectedTodo(null);
+    setRelatedResource(null);
+  };
+
+  const handleComplianceChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
+    setComplianceForm({ ...complianceForm, [e.target.name]: e.target.value });
+  };
+
+  const handleCreateCompliance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createSubmission(complianceForm);
+      handleCloseComplianceModal();
+      fetchData();
+      alert('Compliance submission created successfully!');
+    } catch (error) {
+      console.error('Error creating compliance:', error);
+      alert('Failed to create compliance submission');
     }
   };
 
@@ -172,18 +267,205 @@ function Home() {
                     </div>
                   )}
                 </div>
-                <button
-                  className="btn btn-danger"
-                  onClick={() => handleDeleteTodo(todo.id)}
-                  style={{ padding: '0.5rem 1rem' }}
-                >
-                  Delete
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => handleOpenComplianceModal(todo)}
+                    style={{ padding: '0.5rem 1rem' }}
+                    title="Create compliance submission for this task"
+                  >
+                    📋 Create
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => handleDeleteTodo(todo.id)}
+                    style={{ padding: '0.5rem 1rem' }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Create Compliance Modal */}
+      {showComplianceModal && (
+        <div className="modal-overlay" onClick={handleCloseComplianceModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">
+                Create Compliance Submission
+                {selectedTodo && <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#7f8c8d' }}> for: {selectedTodo.title}</span>}
+              </h2>
+              <button className="modal-close" onClick={handleCloseComplianceModal}>
+                ×
+              </button>
+            </div>
+
+            {relatedResource && (
+              <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
+                <strong>📚 Related Resource:</strong> {relatedResource.title}
+                <div style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
+                  {relatedResource.description.substring(0, 200)}...
+                  {relatedResource.portalLink && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <a href={relatedResource.portalLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>
+                        View Portal →
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateCompliance}>
+              <div className="grid grid-2">
+                <div className="form-group">
+                  <label>Compliance Type *</label>
+                  <input
+                    type="text"
+                    name="complianceType"
+                    value={complianceForm.complianceType}
+                    onChange={handleComplianceChange}
+                    required
+                    placeholder="e.g., SOS Registration"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>State *</label>
+                  <input
+                    type="text"
+                    name="state"
+                    value={complianceForm.state}
+                    onChange={handleComplianceChange}
+                    required
+                    placeholder="e.g., CA"
+                    maxLength={2}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>State Agency *</label>
+                  <input
+                    type="text"
+                    name="stateAgency"
+                    value={complianceForm.stateAgency}
+                    onChange={handleComplianceChange}
+                    required
+                    placeholder="e.g., Secretary of State"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Entity Name</label>
+                  <input
+                    type="text"
+                    name="entityName"
+                    value={complianceForm.entityName}
+                    onChange={handleComplianceChange}
+                    placeholder="Company name"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Registration Number</label>
+                  <input
+                    type="text"
+                    name="registrationNumber"
+                    value={complianceForm.registrationNumber}
+                    onChange={handleComplianceChange}
+                    placeholder="Registration/filing number"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Status</label>
+                  <select name="status" value={complianceForm.status} onChange={handleComplianceChange}>
+                    <option value="ACTIVE">Active</option>
+                    <option value="EXPIRED">Expired</option>
+                    <option value="PENDING">Pending</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Filing Date</label>
+                  <input
+                    type="date"
+                    name="filingDate"
+                    value={complianceForm.filingDate}
+                    onChange={handleComplianceChange}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Expiration Date</label>
+                  <input
+                    type="date"
+                    name="expirationDate"
+                    value={complianceForm.expirationDate}
+                    onChange={handleComplianceChange}
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Filing Storage Link</label>
+                  <input
+                    type="url"
+                    name="filingStorageLink"
+                    value={complianceForm.filingStorageLink}
+                    onChange={handleComplianceChange}
+                    placeholder="Link to Sharepoint, Google Drive, etc."
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Compliance Portal Link</label>
+                  <input
+                    type="url"
+                    name="compliancePageLink"
+                    value={complianceForm.compliancePageLink}
+                    onChange={handleComplianceChange}
+                    placeholder="Link to state compliance portal"
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Password Manager Link</label>
+                  <input
+                    type="url"
+                    name="passwordManagerLink"
+                    value={complianceForm.passwordManagerLink}
+                    onChange={handleComplianceChange}
+                    placeholder="Link to password manager entry"
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Notes</label>
+                  <textarea
+                    name="notes"
+                    value={complianceForm.notes}
+                    onChange={handleComplianceChange}
+                    placeholder="Additional notes..."
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={handleCloseComplianceModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Create Compliance
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
