@@ -35,6 +35,10 @@ export const createSubmission = (data: any) => api.post('/compliance', data);
 export const updateSubmission = (id: string, data: any) => api.put(`/compliance/${id}`, data);
 export const deleteSubmission = (id: string) => api.delete(`/compliance/${id}`);
 
+// Compliance Account Types
+export const getAccountTypes = (state?: string) => 
+  api.get('/compliance/account-types', { params: state ? { state } : {} });
+
 // State Resources
 export const getResources = (params?: any) => api.get('/resources', { params });
 export const getResource = (id: string) => api.get(`/resources/${id}`);

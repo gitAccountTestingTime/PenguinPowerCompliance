@@ -5,11 +5,29 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
+// Get all compliance account types (optionally filtered by state)
+router.get('/account-types', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { state } = req.query;
+    
+    const accountTypes = await prisma.complianceAccountType.findMany({
+      where: state ? { state: String(state).toUpperCase(), isActive: true } : { isActive: true },
+      orderBy: [{ state: 'asc' }, { name: 'asc' }],
+    });
+    
+    res.json(accountTypes);
+  } catch (error) {
+    console.error('Error fetching account types:', error);
+    res.status(500).json({ error: 'Failed to fetch account types' });
+  }
+});
+
 // Get all compliance submissions for user
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const submissions = await prisma.complianceSubmission.findMany({
       where: { userId: req.userId },
+      include: { complianceAccountType: true },
       orderBy: { expirationDate: 'asc' },
     });
     res.json(submissions);
@@ -50,10 +68,12 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       complianceType,
       state,
       stateAgency,
+      complianceAccountTypeId,
       entityName,
       registrationNumber,
       filingDate,
       expirationDate,
+      duration,
       status,
       filingStorageLink,
       compliancePageLink,
@@ -66,10 +86,12 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         complianceType,
         state,
         stateAgency,
+        complianceAccountTypeId: complianceAccountTypeId || null,
         entityName,
         registrationNumber,
         filingDate: filingDate ? new Date(filingDate) : null,
         expirationDate: expirationDate ? new Date(expirationDate) : null,
+        duration,
         status: status || 'ACTIVE',
         filingStorageLink,
         compliancePageLink,
@@ -77,6 +99,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         notes,
         userId: req.userId!,
       },
+      include: { complianceAccountType: true },
     });
 
     res.json(submission);
@@ -99,6 +122,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     const submission = await prisma.complianceSubmission.update({
       where: { id, userId: req.userId },
       data,
+      include: { complianceAccountType: true },
     });
 
     res.json(submission);

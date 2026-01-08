@@ -35,28 +35,50 @@ model TodoItem {
   relatedSubmission   ComplianceSubmission? @relation(fields: [relatedSubmissionId], references: [id])
 }
 
+model ComplianceAccountType {
+  id                    String                 @id @default(uuid())
+  name                  String                 // e.g., "Employer Payroll Tax Account", "Sales Tax Permit"
+  state                 String                 // Two-letter state code
+  stateAgency           String                 // e.g., "Department of Revenue", "Secretary of State"
+  description           String?                // Description of this account type
+  requiredFields        String?                // JSON array of required field names
+  defaultDuration       String?                // Default duration/frequency (e.g., "Annual", "Biennial", "Quarterly")
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  complianceSubmissions ComplianceSubmission[]
+  
+  @@unique([name, state])
+}
+
 model ComplianceSubmission {
-  id                    String     @id @default(uuid())
-  complianceType        String     // e.g., "SOS Registration", "Tax Filing", etc.
-  state                 String     // Two-letter state code
-  stateAgency           String     // e.g., "Secretary of State", "Department of Revenue"
-  entityName            String?    // Company/entity name
-  registrationNumber    String?
-  filingDate            DateTime?
-  expirationDate        DateTime?
-  status                String     @default("ACTIVE") // ACTIVE, EXPIRED, PENDING
+  id                      String                  @id @default(uuid())
+  complianceType          String                  // e.g., "SOS Registration", "Tax Filing", etc.
+  state                   String                  // Two-letter state code
+  stateAgency             String                  // e.g., "Secretary of State", "Department of Revenue"
+  
+  // Compliance Account Type relationship
+  complianceAccountTypeId String?
+  complianceAccountType   ComplianceAccountType?  @relation(fields: [complianceAccountTypeId], references: [id])
+  
+  entityName              String?                 // Company/entity name
+  registrationNumber      String?
+  filingDate              DateTime?
+  expirationDate          DateTime?
+  duration                String?                 // Filing frequency/duration (e.g., "Annual", "Biennial", "Quarterly")
+  status                  String                  @default("ACTIVE") // ACTIVE, EXPIRED, PENDING
   
   // Links (not storing actual sensitive data)
-  filingStorageLink     String?    // Link to Sharepoint, Google Drive, etc.
-  compliancePageLink    String?    // Link to state compliance portal
-  passwordManagerLink   String?    // Link to password manager entry
+  filingStorageLink       String?                 // Link to Sharepoint, Google Drive, etc.
+  compliancePageLink      String?                 // Link to state compliance portal
+  passwordManagerLink     String?                 // Link to password manager entry
   
-  notes                 String?
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  userId                String
-  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  todoItems             TodoItem[]
+  notes                   String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  userId                  String
+  user                    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  todoItems               TodoItem[]
 }
 
 model StateResource {

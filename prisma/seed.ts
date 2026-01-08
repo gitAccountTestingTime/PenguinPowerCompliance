@@ -98,6 +98,286 @@ async function main() {
   }
 
   console.log(`Created ${resources.length} sample resources`);
+  
+  // Sample Compliance Account Types
+  console.log('Seeding compliance account types...');
+  
+  const accountTypes = [
+    // California
+    {
+      name: 'Employer Payroll Tax Account',
+      state: 'CA',
+      stateAgency: 'Employment Development Department (EDD)',
+      description: 'State unemployment insurance and payroll tax account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Sales and Use Tax Permit',
+      state: 'CA',
+      stateAgency: 'California Department of Tax and Fee Administration (CDTFA)',
+      description: 'Permit for collecting and remitting sales tax',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
+      defaultDuration: '1',
+    },
+    {
+      name: 'SOS Business Entity',
+      state: 'CA',
+      stateAgency: 'Secretary of State',
+      description: 'Business entity registration (LLC, Corporation, etc.)',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '24',
+    },
+    {
+      name: 'Workers\' Compensation Insurance',
+      state: 'CA',
+      stateAgency: 'Department of Industrial Relations',
+      description: 'Workers compensation coverage requirement',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
+      defaultDuration: '12',
+    },
+    
+    // New York
+    {
+      name: 'Employer Unemployment Account',
+      state: 'NY',
+      stateAgency: 'Department of Labor',
+      description: 'Unemployment insurance employer account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Sales Tax Certificate of Authority',
+      state: 'NY',
+      stateAgency: 'Department of Taxation and Finance',
+      description: 'Certificate to collect and remit sales tax',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Business Entity Filing',
+      state: 'NY',
+      stateAgency: 'Department of State',
+      description: 'Business formation and registration',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '24',
+    },
+    {
+      name: 'Withholding Tax Account',
+      state: 'NY',
+      stateAgency: 'Department of Taxation and Finance',
+      description: 'Employer withholding tax registration',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
+      defaultDuration: '3',
+    },
+    
+    // Texas
+    {
+      name: 'Texas Unemployment Account',
+      state: 'TX',
+      stateAgency: 'Texas Workforce Commission',
+      description: 'Unemployment insurance employer account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Sales and Use Tax Permit',
+      state: 'TX',
+      stateAgency: 'Texas Comptroller of Public Accounts',
+      description: 'Permit for sales and use tax collection',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
+      defaultDuration: '1',
+    },
+    {
+      name: 'Certificate of Formation',
+      state: 'TX',
+      stateAgency: 'Secretary of State',
+      description: 'Business entity formation filing',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'Franchise Tax Account',
+      state: 'TX',
+      stateAgency: 'Texas Comptroller of Public Accounts',
+      description: 'Texas franchise tax reporting account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
+      defaultDuration: '12',
+    },
+    
+    // Florida
+    {
+      name: 'Reemployment Tax Account',
+      state: 'FL',
+      stateAgency: 'Department of Revenue',
+      description: 'Unemployment insurance tax account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Sales and Use Tax Registration',
+      state: 'FL',
+      stateAgency: 'Department of Revenue',
+      description: 'Registration for sales tax collection',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
+      defaultDuration: '1',
+    },
+    {
+      name: 'Sunbiz Entity Registration',
+      state: 'FL',
+      stateAgency: 'Division of Corporations',
+      description: 'Business entity registration',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate']),
+      defaultDuration: '12',
+    },
+    
+    // Washington
+    {
+      name: 'Unemployment Insurance Account',
+      state: 'WA',
+      stateAgency: 'Employment Security Department',
+      description: 'Employer unemployment insurance account',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'Business License (UBI)',
+      state: 'WA',
+      stateAgency: 'Department of Revenue',
+      description: 'Unified Business Identifier and state business license',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'Retail Sales Tax License',
+      state: 'WA',
+      stateAgency: 'Department of Revenue',
+      description: 'License for collecting retail sales tax',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
+      defaultDuration: '1',
+    },
+    {
+      name: 'Business Entity Registration',
+      state: 'WA',
+      stateAgency: 'Secretary of State',
+      description: 'Business formation and registration',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
+      defaultDuration: '12',
+    },
+    
+    // TEST ACCOUNT TYPES - Demonstrating Dynamic Field Variations
+    {
+      name: 'TEST: Minimal Fields Only',
+      state: 'CA',
+      stateAgency: 'Test Agency - California',
+      description: 'Test account type with only entity name required',
+      requiredFields: JSON.stringify(['entityName']),
+      defaultDuration: '0',
+    },
+    {
+      name: 'TEST: Links Only Account',
+      state: 'NY',
+      stateAgency: 'Test Agency - New York',
+      description: 'Test account type requiring only link fields',
+      requiredFields: JSON.stringify(['filingStorageLink', 'compliancePageLink', 'passwordManagerLink']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'TEST: Dates Required',
+      state: 'TX',
+      stateAgency: 'Test Agency - Texas',
+      description: 'Test account type focusing on date tracking',
+      requiredFields: JSON.stringify(['filingDate', 'expirationDate']),
+      defaultDuration: '6',
+    },
+    {
+      name: 'TEST: Registration Focus',
+      state: 'FL',
+      stateAgency: 'Test Agency - Florida',
+      description: 'Test account type for registration number and entity tracking',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
+      defaultDuration: '24',
+    },
+    {
+      name: 'TEST: Document Storage',
+      state: 'WA',
+      stateAgency: 'Test Agency - Washington',
+      description: 'Test account type for document management',
+      requiredFields: JSON.stringify(['entityName', 'filingStorageLink', 'filingDate']),
+      defaultDuration: '3',
+    },
+    {
+      name: 'TEST: Full Compliance Portal',
+      state: 'IL',
+      stateAgency: 'Test Agency - Illinois',
+      description: 'Test account type for portal access tracking',
+      requiredFields: JSON.stringify(['registrationNumber', 'compliancePageLink', 'passwordManagerLink', 'expirationDate']),
+      defaultDuration: '1',
+    },
+    {
+      name: 'TEST: Basic Identity',
+      state: 'OH',
+      stateAgency: 'Test Agency - Ohio',
+      description: 'Test account type with just entity and filing date',
+      requiredFields: JSON.stringify(['entityName', 'filingDate']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'TEST: Annual Renewal',
+      state: 'PA',
+      stateAgency: 'Test Agency - Pennsylvania',
+      description: 'Test account type for tracking annual renewals',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate', 'filingStorageLink']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'TEST: Secure Access',
+      state: 'GA',
+      stateAgency: 'Test Agency - Georgia',
+      description: 'Test account type for secure portal with credentials',
+      requiredFields: JSON.stringify(['compliancePageLink', 'passwordManagerLink']),
+      defaultDuration: '36',
+    },
+    {
+      name: 'TEST: Comprehensive Tracking',
+      state: 'NC',
+      stateAgency: 'Test Agency - North Carolina',
+      description: 'Test account type requiring all fields',
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate', 'filingStorageLink', 'compliancePageLink', 'passwordManagerLink']),
+      defaultDuration: '12',
+    },
+    {
+      name: 'TEST: Expiration Only',
+      state: 'MI',
+      stateAgency: 'Test Agency - Michigan',
+      description: 'Test account type tracking only expiration',
+      requiredFields: JSON.stringify(['expirationDate']),
+      defaultDuration: '24',
+    },
+    {
+      name: 'TEST: No Extra Fields',
+      state: 'NJ',
+      stateAgency: 'Test Agency - New Jersey',
+      description: 'Test account type with no additional fields beyond defaults',
+      requiredFields: JSON.stringify([]),
+      defaultDuration: '0',
+    },
+  ];
+  
+  for (const accountType of accountTypes) {
+    await prisma.complianceAccountType.upsert({
+      where: {
+        name_state: {
+          name: accountType.name,
+          state: accountType.state,
+        },
+      },
+      update: accountType,
+      create: accountType,
+    });
+  }
+  
+  console.log(`Created/Updated ${accountTypes.length} compliance account types`);
   console.log('Seeding complete!');
 }
 

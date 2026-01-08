@@ -2,6 +2,9 @@
   "name": "penguin-power-compliance",
   "version": "1.0.0",
   "description": "State Compliance Manager Command Center",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "tsx watch server/index.ts",
