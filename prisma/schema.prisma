@@ -63,6 +63,7 @@ model ComplianceSubmission {
   
   entityName              String?                 // Company/entity name
   registrationNumber      String?
+  submittedOn             DateTime?               // Date when the submission was made
   filingDate              DateTime?
   expirationDate          DateTime?
   duration                String?                 // Filing frequency/duration (e.g., "Annual", "Biennial", "Quarterly")

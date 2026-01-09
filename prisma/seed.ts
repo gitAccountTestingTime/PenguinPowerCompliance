@@ -9,7 +9,7 @@ async function main() {
   const resources = [
     {
       state: 'CA',
-      complianceType: 'SOS Registration',
+      complianceType: 'SOS Business Entity',
       title: 'California Secretary of State Business Registration',
       description:
         'All businesses operating in California must register with the Secretary of State. This includes LLCs, corporations, and foreign entities doing business in the state. The registration establishes your legal right to conduct business in California.',
@@ -23,7 +23,7 @@ async function main() {
     },
     {
       state: 'NY',
-      complianceType: 'SOS Registration',
+      complianceType: 'Business Entity Filing',
       title: 'New York Department of State Business Registration',
       description:
         'Foreign and domestic entities must file with the NY Department of State. LLCs must also publish notice of formation in designated newspapers.',
@@ -37,7 +37,7 @@ async function main() {
     },
     {
       state: 'TX',
-      complianceType: 'SOS Registration',
+      complianceType: 'Certificate of Formation',
       title: 'Texas Secretary of State Business Filing',
       description:
         'All entities conducting business in Texas must register with the Secretary of State and obtain a certificate of authority.',
@@ -50,7 +50,7 @@ async function main() {
     },
     {
       state: 'FL',
-      complianceType: 'SOS Registration',
+      complianceType: 'Sunbiz Entity Registration',
       title: 'Florida Department of State Division of Corporations',
       description:
         'Florida requires all business entities to register with the Division of Corporations. This includes filing articles and maintaining an active registered agent.',
@@ -78,7 +78,7 @@ async function main() {
     },
     {
       state: 'WA',
-      complianceType: 'SOS Registration',
+      complianceType: 'Business Entity Registration',
       title: 'Washington Secretary of State Business Licensing',
       description:
         'Washington requires business registration with the Secretary of State and may require additional local business licenses.',

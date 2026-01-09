@@ -71,6 +71,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       complianceAccountTypeId,
       entityName,
       registrationNumber,
+      submittedOn,
       filingDate,
       expirationDate,
       duration,
@@ -89,6 +90,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
         complianceAccountTypeId: complianceAccountTypeId || null,
         entityName,
         registrationNumber,
+        submittedOn: submittedOn ? new Date(submittedOn) : null,
         filingDate: filingDate ? new Date(filingDate) : null,
         expirationDate: expirationDate ? new Date(expirationDate) : null,
         duration,
@@ -116,6 +118,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     const data = req.body;
 
     // Convert date strings to Date objects
+    if (data.submittedOn) data.submittedOn = new Date(data.submittedOn);
     if (data.filingDate) data.filingDate = new Date(data.filingDate);
     if (data.expirationDate) data.expirationDate = new Date(data.expirationDate);
 

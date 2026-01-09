@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { getTodos, updateTodo, deleteTodo, getExpiringSubmissions, createSubmission, getResources, getAccountTypes } from '../services/api';
+import { useState, useEffect, useRef } from 'react';
+import { getTodos, createTodo, updateTodo, deleteTodo, getSubmissions, updateSubmission, getExpiringSubmissions, createSubmission, getResources, getAccountTypes } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface ComplianceAccountType {
@@ -34,7 +34,16 @@ interface Submission {
   id: string;
   complianceType: string;
   state: string;
+  stateAgency: string;
+  entityName?: string;
+  registrationNumber?: string;
+  submittedOn?: string;
+  filingDate?: string;
   expirationDate: string;
+  duration?: string;
+  status: string;
+  complianceAccountTypeId?: string;
+  complianceAccountType?: ComplianceAccountType;
 }
 
 interface ComplianceFormData {
@@ -44,6 +53,7 @@ interface ComplianceFormData {
   complianceAccountTypeId?: string;
   entityName: string;
   registrationNumber: string;
+  submittedOn: string;
   filingDate: string;
   expirationDate: string;
   duration: string;
@@ -61,7 +71,8 @@ const emptyCompliance: ComplianceFormData = {
   complianceAccountTypeId: '',
   entityName: '',
   registrationNumber: '',
-  filingDate: '',
+  submittedOn: new Date().toISOString().split('T')[0],
+  filingDate: new Date().toISOString().split('T')[0],
   expirationDate: '',
   duration: '',
   status: 'ACTIVE',
@@ -82,10 +93,24 @@ function Home() {
   const [relatedResource, setRelatedResource] = useState<any>(null);
   const [accountTypes, setAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
+  const [showResourceModal, setShowResourceModal] = useState(false);
+  const hasCheckedRenewals = useRef(false);
 
   useEffect(() => {
-    fetchData();
-    fetchAccountTypes();
+    // Prevent double execution in StrictMode
+    if (hasCheckedRenewals.current) {
+      return;
+    }
+    
+    hasCheckedRenewals.current = true;
+    
+    const initializePage = async () => {
+      await fetchAccountTypes();
+      await checkAndCreateRenewalTodos();
+      // fetchData is called within checkAndCreateRenewalTodos, so no need to call it again
+    };
+    
+    initializePage();
   }, []);
 
   useEffect(() => {
@@ -99,6 +124,34 @@ function Home() {
       setFilteredAccountTypes([]);
     }
   }, [complianceForm.state, accountTypes]);
+
+  useEffect(() => {
+    // Fetch related resource when state and compliance type are selected
+    const fetchRelatedResource = async () => {
+      if (complianceForm.state && complianceForm.complianceType) {
+        try {
+          console.log('Fetching resource for:', { state: complianceForm.state, complianceType: complianceForm.complianceType });
+          const resourcesRes = await getResources({
+            state: complianceForm.state.toUpperCase(),
+            complianceType: complianceForm.complianceType,
+          });
+          console.log('Resources found:', resourcesRes.data);
+          if (resourcesRes.data && resourcesRes.data.length > 0) {
+            setRelatedResource(resourcesRes.data[0]);
+          } else {
+            setRelatedResource(null);
+          }
+        } catch (error) {
+          console.error('Error fetching related resource:', error);
+          setRelatedResource(null);
+        }
+      } else {
+        setRelatedResource(null);
+      }
+    };
+
+    fetchRelatedResource();
+  }, [complianceForm.state, complianceForm.complianceType]);
 
   const fetchData = async () => {
     try {
@@ -124,6 +177,73 @@ function Home() {
     }
   };
 
+  const checkAndCreateRenewalTodos = async () => {
+    try {
+      // Fetch all submissions and todos in parallel
+      const [submissionsRes, todosRes] = await Promise.all([
+        getSubmissions(),
+        getTodos(),
+      ]);
+      
+      const allSubmissions: Submission[] = submissionsRes.data;
+      const existingTodos: Todo[] = todosRes.data;
+      
+      const today = new Date();
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(today.getDate() + 30);
+      
+      // Process each active submission
+      for (const submission of allSubmissions) {
+        // Skip if not active
+        if (submission.status !== 'ACTIVE') continue;
+        
+        // Calculate when renewal is needed
+        let renewalDate: Date | null = null;
+        
+        // Use expirationDate if available
+        if (submission.expirationDate) {
+          renewalDate = new Date(submission.expirationDate);
+        } 
+        // Otherwise calculate from filingDate + duration
+        else if (submission.filingDate && submission.duration) {
+          const filingDateObj = new Date(submission.filingDate);
+          const durationMonths = parseInt(submission.duration);
+          
+          if (!isNaN(durationMonths)) {
+            renewalDate = new Date(filingDateObj);
+            renewalDate.setMonth(renewalDate.getMonth() + durationMonths);
+          }
+        }
+        
+        // If we have a renewal date and it's within 30 days
+        if (renewalDate && renewalDate >= today && renewalDate <= thirtyDaysFromNow) {
+          // Check if a todo already exists for this submission (non-completed)
+          const existingTodo = existingTodos.find(
+            (todo) => todo.relatedSubmission?.id === submission.id && todo.status !== 'COMPLETED'
+          );
+          
+          // Only create if todo doesn't exist
+          if (!existingTodo) {
+            const daysUntilRenewal = Math.ceil((renewalDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            await createTodo({
+              title: `Renew ${submission.complianceType} - ${submission.state}`,
+              description: `${submission.complianceType} for ${submission.entityName || 'your entity'} in ${submission.state} needs to be renewed. Filing with ${submission.stateAgency}.`,
+              priority: daysUntilRenewal <= 7 ? 'URGENT' : daysUntilRenewal <= 14 ? 'HIGH' : 'MEDIUM',
+              dueDate: renewalDate.toISOString(),
+              relatedSubmissionId: submission.id,
+            });
+          }
+        }
+      }
+      
+      // Refresh the todo list after creating new ones
+      fetchData();
+    } catch (error) {
+      console.error('Error checking renewal todos:', error);
+    }
+  };
+
   const handleToggleTodo = async (todo: Todo) => {
     try {
       const newStatus = todo.status === 'COMPLETED' ? 'PENDING' : 'COMPLETED';
@@ -145,6 +265,45 @@ function Home() {
     }
   };
 
+  const handleDeleteAllTodos = async () => {
+    if (todos.length === 0) return;
+    
+    const confirmMessage = `Are you sure you want to delete all ${todos.length} to-do item${todos.length !== 1 ? 's' : ''}? This action cannot be undone.`;
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        // Delete all todos in parallel
+        await Promise.all(todos.map(todo => deleteTodo(todo.id)));
+        fetchData();
+      } catch (error) {
+        console.error('Error deleting all todos:', error);
+        alert('Failed to delete all todos');
+      }
+    }
+  };
+
+  const handleDeleteCompleted = async () => {
+    const completedTodos = todos.filter(todo => todo.status === 'COMPLETED');
+    
+    if (completedTodos.length === 0) {
+      alert('No completed tasks to delete.');
+      return;
+    }
+    
+    const confirmMessage = `Are you sure you want to delete ${completedTodos.length} completed task${completedTodos.length !== 1 ? 's' : ''}? This action cannot be undone.`;
+    
+    if (window.confirm(confirmMessage)) {
+      try {
+        // Delete all completed todos in parallel
+        await Promise.all(completedTodos.map(todo => deleteTodo(todo.id)));
+        fetchData();
+      } catch (error) {
+        console.error('Error deleting completed todos:', error);
+        alert('Failed to delete completed todos');
+      }
+    }
+  };
+
   const handleOpenComplianceModal = async (todo: Todo) => {
     setSelectedTodo(todo);
     
@@ -152,10 +311,29 @@ function Home() {
     const formData = { ...emptyCompliance };
     
     if (todo.relatedSubmission) {
-      formData.complianceType = todo.relatedSubmission.complianceType;
-      formData.state = todo.relatedSubmission.state;
-      formData.stateAgency = todo.relatedSubmission.stateAgency;
-      formData.complianceAccountTypeId = todo.relatedSubmission.complianceAccountTypeId || '';
+      // Fetch the full submission data to get all fields
+      try {
+        const submissionsRes = await getSubmissions();
+        const fullSubmission = submissionsRes.data.find(
+          (sub: Submission) => sub.id === todo.relatedSubmission?.id
+        );
+        
+        if (fullSubmission) {
+          // Auto-populate all fields from the previous submission
+          formData.complianceType = fullSubmission.complianceType;
+          formData.state = fullSubmission.state;
+          formData.stateAgency = fullSubmission.stateAgency;
+          formData.complianceAccountTypeId = fullSubmission.complianceAccountTypeId || '';
+          formData.entityName = fullSubmission.entityName || '';
+          formData.registrationNumber = fullSubmission.registrationNumber || '';
+          formData.duration = fullSubmission.duration || '';
+          formData.status = 'ACTIVE'; // Always set to ACTIVE for renewals
+          // Keep the new dates (submittedOn and filingDate default to today)
+          // Don't copy the old expirationDate - it will be recalculated
+        }
+      } catch (error) {
+        console.error('Error fetching full submission data:', error);
+      }
       
       // Try to fetch related resource for additional guidance
       try {
@@ -268,10 +446,73 @@ function Home() {
   const handleCreateCompliance = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createSubmission(complianceForm);
+      // Calculate expiration date if not provided
+      const submissionData = { ...complianceForm };
+      
+      if (!submissionData.expirationDate && submissionData.filingDate && submissionData.duration) {
+        const filingDateObj = new Date(submissionData.filingDate);
+        const durationMonths = parseInt(submissionData.duration);
+        
+        if (!isNaN(durationMonths)) {
+          const expirationDate = new Date(filingDateObj);
+          expirationDate.setMonth(expirationDate.getMonth() + durationMonths);
+          submissionData.expirationDate = expirationDate.toISOString().split('T')[0];
+        }
+      }
+      
+      // Check if this is a renewal (matching State, Compliance Type, and Entity Name)
+      let matchingSubmission = null;
+      if (submissionData.state && submissionData.complianceType && submissionData.entityName) {
+        try {
+          const submissionsRes = await getSubmissions();
+          const allSubmissions: Submission[] = submissionsRes.data;
+          
+          // Find existing submission with matching criteria (excluding OBSOLETE status)
+          matchingSubmission = allSubmissions.find((sub: Submission) => 
+            sub.state.toUpperCase() === submissionData.state.toUpperCase() &&
+            sub.complianceType === submissionData.complianceType &&
+            sub.entityName === submissionData.entityName &&
+            sub.status !== 'OBSOLETE'
+          );
+        } catch (error) {
+          console.error('Error checking for existing submissions:', error);
+        }
+      }
+      
+      // Create the new submission
+      await createSubmission(submissionData);
+      
+      // Mark the todo as completed if this submission was created from a todo
+      if (selectedTodo) {
+        try {
+          await updateTodo(selectedTodo.id, { status: 'COMPLETED' });
+        } catch (error) {
+          console.error('Error marking todo as completed:', error);
+          // Don't fail the whole operation if this fails
+        }
+      }
+      
+      // If a match was found, mark the old one as obsolete
+      if (matchingSubmission) {
+        try {
+          await updateSubmission(matchingSubmission.id, { status: 'OBSOLETE' });
+          
+          // Show confirmation dialog
+          alert(
+            `Compliance submission created successfully!\n\n` +
+            `The previous submission for ${submissionData.complianceType} - ${submissionData.state} ` +
+            `(${submissionData.entityName}) has been marked as OBSOLETE.`
+          );
+        } catch (error) {
+          console.error('Error updating old submission to obsolete:', error);
+          alert('New submission created successfully, but failed to update the previous submission to obsolete.');
+        }
+      } else {
+        alert('Compliance submission created successfully!');
+      }
+      
       handleCloseComplianceModal();
       fetchData();
-      alert('Compliance submission created successfully!');
     } catch (error) {
       console.error('Error creating compliance:', error);
       alert('Failed to create compliance submission');
@@ -343,8 +584,28 @@ function Home() {
 
       {/* Todo List */}
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 className="card-title">📝 Your To-Do List</h3>
+          {todos.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-danger"
+                onClick={handleDeleteCompleted}
+                style={{ padding: '0.5rem 1rem' }}
+                title="Delete completed to-do items"
+              >
+                Delete Completed
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={handleDeleteAllTodos}
+                style={{ padding: '0.5rem 1rem' }}
+                title="Delete all to-do items"
+              >
+                Delete All
+              </button>
+            </div>
+          )}
         </div>
         {todos.length === 0 ? (
           <p style={{ color: '#7f8c8d' }}>No pending tasks. Great job!</p>
@@ -391,9 +652,9 @@ function Home() {
                     className="btn btn-success"
                     onClick={() => handleOpenComplianceModal(todo)}
                     style={{ padding: '0.5rem 1rem' }}
-                    title="Create compliance submission for this task"
+                    title={todo.relatedSubmission ? "Renew compliance submission" : "Create compliance submission for this task"}
                   >
-                    📋 Create
+                    {todo.relatedSubmission ? '🔄 Renew' : '📋 Create'}
                   </button>
                   <button
                     className="btn btn-danger"
@@ -415,29 +676,13 @@ function Home() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
-                Create Compliance Submission
+                {selectedTodo?.relatedSubmission ? 'Renew Compliance Submission' : 'Create Compliance Submission'}
                 {selectedTodo && <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#7f8c8d' }}> for: {selectedTodo.title}</span>}
               </h2>
               <button className="modal-close" onClick={handleCloseComplianceModal}>
                 ×
               </button>
             </div>
-
-            {relatedResource && (
-              <div className="alert alert-info" style={{ marginBottom: '1rem' }}>
-                <strong>📚 Related Resource:</strong> {relatedResource.title}
-                <div style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>
-                  {relatedResource.description.substring(0, 200)}...
-                  {relatedResource.portalLink && (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <a href={relatedResource.portalLink} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>
-                        View Portal →
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             <form onSubmit={handleCreateCompliance}>
               <div className="grid grid-2">
@@ -511,6 +756,34 @@ function Home() {
                         {filteredAccountTypes.length} account type{filteredAccountTypes.length !== 1 ? 's' : ''} available for {complianceForm.state}
                       </small>
                     )}
+                  </div>
+                )}
+
+                {/* Display Related Resource Link */}
+                {relatedResource && complianceForm.complianceAccountTypeId && (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ padding: '0.75rem', backgroundColor: '#e8f4f8', borderRadius: '4px', border: '1px solid #3498db' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#2c3e50' }}>
+                        📚 Need help with this registration?
+                      </span>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowResourceModal(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3498db',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          fontWeight: '500',
+                          padding: 0
+                        }}
+                      >
+                        View Resource Guide
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -593,6 +866,18 @@ function Home() {
                         </small>
                       )}
                     </div>
+
+                    {shouldShowField('submittedOn') && (
+                      <div className="form-group">
+                        <label>Submitted On</label>
+                        <input
+                          type="date"
+                          name="submittedOn"
+                          value={complianceForm.submittedOn}
+                          onChange={handleComplianceChange}
+                        />
+                      </div>
+                    )}
 
                     {shouldShowField('filingDate') && (
                       <div className="form-group">
@@ -680,6 +965,91 @@ function Home() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Resource Modal */}
+      {showResourceModal && relatedResource && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowResourceModal(false)}
+          style={{ zIndex: 1001 }}
+        >
+          <div 
+            className="modal" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '700px' }}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">
+                📚 {relatedResource.title}
+              </h2>
+              <button className="modal-close" onClick={() => setShowResourceModal(false)}>
+                ×
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Description</h3>
+                <p style={{ fontSize: '0.9rem', lineHeight: '1.6', color: '#34495e' }}>
+                  {relatedResource.description}
+                </p>
+              </div>
+
+              {relatedResource.filingFrequency && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Filing Frequency</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.filingFrequency}</p>
+                </div>
+              )}
+
+              {relatedResource.fees && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Fees</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.fees}</p>
+                </div>
+              )}
+
+              {relatedResource.requiredDocuments && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Required Documents</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.requiredDocuments}</p>
+                </div>
+              )}
+
+              {relatedResource.additionalNotes && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Additional Notes</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.additionalNotes}</p>
+                </div>
+              )}
+
+              {relatedResource.portalLink && (
+                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #eee' }}>
+                  <a 
+                    href={relatedResource.portalLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="btn btn-primary"
+                    style={{ display: 'inline-block', textDecoration: 'none' }}
+                  >
+                    Open Compliance Portal →
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setShowResourceModal(false)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

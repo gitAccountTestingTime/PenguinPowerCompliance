@@ -1,5 +1,16 @@
 import { useState, useEffect } from 'react';
-import { getResources, createResource } from '../services/api';
+import { getResources, createResource, getAccountTypes } from '../services/api';
+
+interface ComplianceAccountType {
+  id: string;
+  name: string;
+  state: string;
+  stateAgency: string;
+  description?: string;
+  requiredFields?: string;
+  defaultDuration?: string;
+  isActive: boolean;
+}
 
 interface Resource {
   id?: string;
@@ -37,14 +48,25 @@ function SubmissionResources() {
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState<Resource>(emptyResource);
+  const [accountTypes, setAccountTypes] = useState<ComplianceAccountType[]>([]);
+  const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
 
   useEffect(() => {
     fetchResources();
+    fetchAccountTypes();
   }, []);
 
   useEffect(() => {
-    filterResources();
-  }, [resources, searchTerm, stateFilter, typeFilter]);
+    // Filter account types when state changes in the form
+    if (formData.state) {
+      const filtered = accountTypes.filter(
+        (type) => type.state.toUpperCase() === formData.state.toUpperCase()
+      );
+      setFilteredAccountTypes(filtered);
+    } else {
+      setFilteredAccountTypes([]);
+    }
+  }, [formData.state, accountTypes]);
 
   const fetchResources = async () => {
     try {
@@ -54,6 +76,15 @@ function SubmissionResources() {
       console.error('Error fetching resources:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAccountTypes = async () => {
+    try {
+      const response = await getAccountTypes();
+      setAccountTypes(response.data);
+    } catch (error) {
+      console.error('Error fetching account types:', error);
     }
   };
 
@@ -267,47 +298,94 @@ function SubmissionResources() {
                 Close
               </button>
             </div>
-          </div>
+      </div>
+    </div>
+  )}
+
+  {/* Add Resource Modal */}
+  {showAddModal && (
+    <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="modal-title">Add New Resource</h2>
+          <button className="modal-close" onClick={() => setShowAddModal(false)}>
+            ×
+          </button>
         </div>
-      )}
 
-      {/* Add Resource Modal */}
-      {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">Add New Resource</h2>
-              <button className="modal-close" onClick={() => setShowAddModal(false)}>
-                ×
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-2">
-                <div className="form-group">
-                  <label>State *</label>
-                  <input
-                    type="text"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleChange}
-                    required
-                    maxLength={2}
-                    placeholder="e.g., CA"
-                  />
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-2">
+            <div className="form-group">
+              <label>State *</label>
+              <input
+                type="text"
+                name="state"
+                value={formData.state}
+                onChange={handleChange}
+                required
+                maxLength={2}
+                placeholder="e.g., CA"
+                style={{ textTransform: 'uppercase' }}
+              />
+              {!formData.state && (
+                    <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
+                      Enter state code first to see available compliance types
+                    </small>
+                  )}
                 </div>
 
                 <div className="form-group">
                   <label>Compliance Type *</label>
-                  <input
-                    type="text"
-                    name="complianceType"
-                    value={formData.complianceType}
-                    onChange={handleChange}
-                    required
-                    placeholder="e.g., SOS Registration"
-                  />
-                </div>
+                  {formData.state && filteredAccountTypes.length > 0 ? (
+                    <>
+                      <select
+                        name="complianceType"
+                        value={formData.complianceType}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">-- Select a Compliance Type --</option>
+                        {filteredAccountTypes.map((type) => (
+                          <option key={type.id} value={type.name}>
+                            {type.name}
+                          </option>
+                        ))}
+                      </select>
+                      <small style={{ color: '#27ae60', marginTop: '0.25rem', display: 'block' }}>
+                        ✓ {filteredAccountTypes.length} compliance type{filteredAccountTypes.length !== 1 ? 's' : ''} available for {formData.state}
+                      </small>
+                    </>
+                  ) : formData.state ? (
+                    <>
+                      <input
+                        type="text"
+                        name="complianceType"
+                        value={formData.complianceType}
+                        onChange={handleChange}
+                        required
+                        placeholder="No existing types - enter custom type"
+                      />
+                      <small style={{ color: '#e67e22', marginTop: '0.25rem', display: 'block' }}>
+                        ⚠️ No compliance types found for {formData.state}. You can enter a custom type.
+                      </small>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        name="complianceType"
+                        value={formData.complianceType}
+                        onChange={handleChange}
+                        required
+                        placeholder="Select state first"
+                        disabled
+                      />
+                      <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
+                        Please select a state first
+                    </small>
+                  </>
+                )}
+              </div>
 
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label>Title *</label>

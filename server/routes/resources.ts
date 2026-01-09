@@ -11,19 +11,33 @@ router.get('/', authenticate, async (req, res) => {
     const { state, complianceType, search } = req.query;
 
     const where: any = {};
-    if (state) where.state = state as string;
-    if (complianceType) where.complianceType = complianceType as string;
+    if (state) {
+      where.state = (state as string).toUpperCase();
+    }
+    if (complianceType) {
+      // Use contains for more flexible matching (case-sensitive in SQLite)
+      where.complianceType = { 
+        contains: complianceType as string
+      };
+    }
     if (search) {
       where.OR = [
-        { title: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } },
+        { title: { contains: search as string } },
+        { description: { contains: search as string } },
       ];
     }
 
+    console.log('Resource query where clause:', where);
+    
     const resources = await prisma.stateResource.findMany({
       where,
       orderBy: [{ state: 'asc' }, { complianceType: 'asc' }],
     });
+
+    console.log(`Found ${resources.length} resources for state: ${state}, type: ${complianceType}`);
+    if (resources.length > 0) {
+      console.log('First resource:', resources[0].title);
+    }
 
     res.json(resources);
   } catch (error) {

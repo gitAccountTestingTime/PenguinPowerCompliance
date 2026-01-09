@@ -5,6 +5,7 @@ import {
   updateSubmission,
   deleteSubmission,
   getAccountTypes,
+  getResources,
 } from '../services/api';
 
 interface ComplianceAccountType {
@@ -27,6 +28,7 @@ interface Submission {
   complianceAccountType?: ComplianceAccountType;
   entityName: string;
   registrationNumber: string;
+  submittedOn: string;
   filingDate: string;
   expirationDate: string;
   duration: string;
@@ -44,7 +46,8 @@ const emptySubmission: Submission = {
   complianceAccountTypeId: '',
   entityName: '',
   registrationNumber: '',
-  filingDate: '',
+  submittedOn: new Date().toISOString().split('T')[0],
+  filingDate: new Date().toISOString().split('T')[0],
   expirationDate: '',
   duration: '',
   status: 'ACTIVE',
@@ -62,6 +65,15 @@ function ComplianceSubmissions() {
   const [formData, setFormData] = useState<Submission>(emptySubmission);
   const [accountTypes, setAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
+  const [relatedResource, setRelatedResource] = useState<any>(null);
+  const [showResourceModal, setShowResourceModal] = useState(false);
+  
+  // Sorting and filtering state
+  const [sortField, setSortField] = useState<string>('expirationDate');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [filterState, setFilterState] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('hideObsolete'); // Default to hiding obsolete
+  const [filterType, setFilterType] = useState<string>('');
 
   useEffect(() => {
     fetchSubmissions();
@@ -91,6 +103,34 @@ function ComplianceSubmissions() {
     }
   }, [formData.state, accountTypes]);
 
+  useEffect(() => {
+    // Fetch related resource when state and compliance type are selected
+    const fetchRelatedResource = async () => {
+      if (formData.state && formData.complianceType) {
+        try {
+          console.log('Fetching resource for:', { state: formData.state, complianceType: formData.complianceType });
+          const resourcesRes = await getResources({
+            state: formData.state.toUpperCase(),
+            complianceType: formData.complianceType,
+          });
+          console.log('Resources found:', resourcesRes.data);
+          if (resourcesRes.data && resourcesRes.data.length > 0) {
+            setRelatedResource(resourcesRes.data[0]);
+          } else {
+            setRelatedResource(null);
+          }
+        } catch (error) {
+          console.error('Error fetching related resource:', error);
+          setRelatedResource(null);
+        }
+      } else {
+        setRelatedResource(null);
+      }
+    };
+
+    fetchRelatedResource();
+  }, [formData.state, formData.complianceType]);
+
   const fetchSubmissions = async () => {
     try {
       const response = await getSubmissions();
@@ -114,7 +154,14 @@ function ComplianceSubmissions() {
   const handleOpenModal = (submission?: Submission) => {
     if (submission) {
       setEditingSubmission(submission);
-      setFormData(submission);
+      // Format dates for HTML date inputs (YYYY-MM-DD)
+      const formattedSubmission = {
+        ...submission,
+        submittedOn: submission.submittedOn ? new Date(submission.submittedOn).toISOString().split('T')[0] : '',
+        filingDate: submission.filingDate ? new Date(submission.filingDate).toISOString().split('T')[0] : '',
+        expirationDate: submission.expirationDate ? new Date(submission.expirationDate).toISOString().split('T')[0] : '',
+      };
+      setFormData(formattedSubmission);
     } else {
       setEditingSubmission(null);
       setFormData(emptySubmission);
@@ -126,6 +173,7 @@ function ComplianceSubmissions() {
     setShowModal(false);
     setEditingSubmission(null);
     setFormData(emptySubmission);
+    setRelatedResource(null);
   };
 
   const handleChange = (
@@ -193,10 +241,43 @@ function ComplianceSubmissions() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      // Calculate expiration date if not provided
+      const submissionData = { ...formData };
+      
+      if (!submissionData.expirationDate && submissionData.filingDate && submissionData.duration) {
+        const filingDateObj = new Date(submissionData.filingDate);
+        const durationMonths = parseInt(submissionData.duration);
+        
+        if (!isNaN(durationMonths)) {
+          const expirationDate = new Date(filingDateObj);
+          expirationDate.setMonth(expirationDate.getMonth() + durationMonths);
+          submissionData.expirationDate = expirationDate.toISOString().split('T')[0];
+        }
+      }
+      
+      // Remove nested relation objects that shouldn't be sent to the API
+      const cleanData = {
+        complianceType: submissionData.complianceType,
+        state: submissionData.state,
+        stateAgency: submissionData.stateAgency,
+        complianceAccountTypeId: submissionData.complianceAccountTypeId || null,
+        entityName: submissionData.entityName,
+        registrationNumber: submissionData.registrationNumber,
+        submittedOn: submissionData.submittedOn,
+        filingDate: submissionData.filingDate,
+        expirationDate: submissionData.expirationDate,
+        duration: submissionData.duration,
+        status: submissionData.status,
+        filingStorageLink: submissionData.filingStorageLink,
+        compliancePageLink: submissionData.compliancePageLink,
+        passwordManagerLink: submissionData.passwordManagerLink,
+        notes: submissionData.notes,
+      };
+      
       if (editingSubmission) {
-        await updateSubmission(editingSubmission.id!, formData);
+        await updateSubmission(editingSubmission.id!, cleanData);
       } else {
-        await createSubmission(formData);
+        await createSubmission(cleanData);
       }
       handleCloseModal();
       fetchSubmissions();
@@ -216,6 +297,73 @@ function ComplianceSubmissions() {
         alert('Failed to delete submission');
       }
     }
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getFilteredAndSortedSubmissions = () => {
+    let filtered = [...submissions];
+
+    // Apply status filter
+    if (filterStatus === 'hideObsolete') {
+      filtered = filtered.filter(s => s.status !== 'OBSOLETE');
+    } else if (filterStatus && filterStatus !== 'all') {
+      filtered = filtered.filter(s => s.status === filterStatus);
+    }
+
+    // Apply state filter
+    if (filterState) {
+      filtered = filtered.filter(s => 
+        s.state.toUpperCase().includes(filterState.toUpperCase())
+      );
+    }
+
+    // Apply type filter
+    if (filterType) {
+      filtered = filtered.filter(s => 
+        s.complianceType.toLowerCase().includes(filterType.toLowerCase())
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aValue: any = a[sortField as keyof Submission];
+      let bValue: any = b[sortField as keyof Submission];
+
+      // Handle nested account type
+      if (sortField === 'accountType') {
+        aValue = a.complianceAccountType?.name || '';
+        bValue = b.complianceAccountType?.name || '';
+      }
+
+      // Handle dates
+      if (sortField === 'expirationDate' || sortField === 'filingDate') {
+        aValue = aValue ? new Date(aValue).getTime() : 0;
+        bValue = bValue ? new Date(bValue).getTime() : 0;
+      }
+
+      // Handle null/undefined
+      if (!aValue) aValue = '';
+      if (!bValue) bValue = '';
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  };
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) return ' ↕️';
+    return sortDirection === 'asc' ? ' ↑' : ' ↓';
   };
 
   if (loading) {
@@ -239,22 +387,88 @@ function ComplianceSubmissions() {
         </div>
       ) : (
         <div className="card">
+          {/* Filter Controls */}
+          <div style={{ padding: '1rem', borderBottom: '1px solid #eee', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ flex: '1', minWidth: '150px' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', fontWeight: '500' }}>State</label>
+              <input
+                type="text"
+                placeholder="Filter by state..."
+                value={filterState}
+                onChange={(e) => setFilterState(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </div>
+            <div style={{ flex: '1', minWidth: '150px' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', fontWeight: '500' }}>Type</label>
+              <input
+                type="text"
+                placeholder="Filter by type..."
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </div>
+            <div style={{ flex: '1', minWidth: '150px' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: '0.25rem', fontWeight: '500' }}>Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
+              >
+                <option value="hideObsolete">Active (Hide Obsolete)</option>
+                <option value="all">All Statuses</option>
+                <option value="ACTIVE">Active Only</option>
+                <option value="EXPIRED">Expired Only</option>
+                <option value="PENDING">Pending Only</option>
+                <option value="OBSOLETE">Obsolete Only</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setFilterState('');
+                  setFilterType('');
+                  setFilterStatus('hideObsolete');
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 1rem' }}
+              >
+                Clear Filters
+              </button>
+            </div>
+          </div>
+
           <table className="table">
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Account Type</th>
-                <th>State</th>
-                <th>Agency</th>
-                <th>Entity</th>
+                <th onClick={() => handleSort('complianceType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Type{getSortIcon('complianceType')}
+                </th>
+                <th onClick={() => handleSort('accountType')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Account Type{getSortIcon('accountType')}
+                </th>
+                <th onClick={() => handleSort('state')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  State{getSortIcon('state')}
+                </th>
+                <th onClick={() => handleSort('stateAgency')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Agency{getSortIcon('stateAgency')}
+                </th>
+                <th onClick={() => handleSort('entityName')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Entity{getSortIcon('entityName')}
+                </th>
                 <th>Registration #</th>
-                <th>Expiration</th>
-                <th>Status</th>
+                <th onClick={() => handleSort('expirationDate')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Expiration{getSortIcon('expirationDate')}
+                </th>
+                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Status{getSortIcon('status')}
+                </th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {submissions.map((submission) => (
+              {getFilteredAndSortedSubmissions().map((submission) => (
                 <tr key={submission.id}>
                   <td>{submission.complianceType}</td>
                   <td>
@@ -377,6 +591,34 @@ function ComplianceSubmissions() {
                   </div>
                 )}
 
+                {/* Display Related Resource Link */}
+                {relatedResource && formData.complianceAccountTypeId && (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ padding: '0.75rem', backgroundColor: '#e8f4f8', borderRadius: '4px', border: '1px solid #3498db' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#2c3e50' }}>
+                        📚 Need help with this registration?
+                      </span>
+                      {' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowResourceModal(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3498db',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          fontWeight: '500',
+                          padding: 0
+                        }}
+                      >
+                        View Resource Guide
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Show remaining fields only after account type is selected */}
                 {formData.complianceAccountTypeId && (
                   <>
@@ -442,7 +684,7 @@ function ComplianceSubmissions() {
                     </div>
 
                     <div className="form-group">
-                      <label>Duration / Frequency</label>
+                      <label>Duration / Frequency (Months)</label>
                       <input
                         type="text"
                         name="duration"
@@ -456,6 +698,18 @@ function ComplianceSubmissions() {
                         </small>
                       )}
                     </div>
+
+                    {shouldShowField('submittedOn') && (
+                      <div className="form-group">
+                        <label>Submitted On</label>
+                        <input
+                          type="date"
+                          name="submittedOn"
+                          value={formData.submittedOn}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    )}
 
                     {shouldShowField('filingDate') && (
                       <div className="form-group">
@@ -543,6 +797,91 @@ function ComplianceSubmissions() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Resource Modal */}
+      {showResourceModal && relatedResource && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowResourceModal(false)}
+          style={{ zIndex: 1001 }}
+        >
+          <div 
+            className="modal" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '700px' }}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">
+                📚 {relatedResource.title}
+              </h2>
+              <button className="modal-close" onClick={() => setShowResourceModal(false)}>
+                ×
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Description</h3>
+                <p style={{ fontSize: '0.9rem', lineHeight: '1.6', color: '#34495e' }}>
+                  {relatedResource.description}
+                </p>
+              </div>
+
+              {relatedResource.filingFrequency && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Filing Frequency</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.filingFrequency}</p>
+                </div>
+              )}
+
+              {relatedResource.fees && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Fees</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.fees}</p>
+                </div>
+              )}
+
+              {relatedResource.requiredDocuments && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Required Documents</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.requiredDocuments}</p>
+                </div>
+              )}
+
+              {relatedResource.additionalNotes && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#2c3e50' }}>Additional Notes</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#34495e' }}>{relatedResource.additionalNotes}</p>
+                </div>
+              )}
+
+              {relatedResource.portalLink && (
+                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #eee' }}>
+                  <a 
+                    href={relatedResource.portalLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="btn btn-primary"
+                    style={{ display: 'inline-block', textDecoration: 'none' }}
+                  >
+                    Open Compliance Portal →
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setShowResourceModal(false)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
