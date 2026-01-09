@@ -227,7 +227,7 @@ function ComplianceSubmissions() {
     try {
       const requiredFields = JSON.parse(selectedType.requiredFields);
       // Always show certain fields
-      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status'];
+      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status', 'filingStorageLink'];
       if (alwaysShow.includes(fieldName)) {
         return true;
       }
@@ -735,18 +735,16 @@ function ComplianceSubmissions() {
                       </div>
                     )}
 
-                    {shouldShowField('filingStorageLink') && (
-                      <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                        <label>Filing Storage Link</label>
-                        <input
-                          type="url"
-                          name="filingStorageLink"
-                          value={formData.filingStorageLink}
-                          onChange={handleChange}
-                          placeholder="Link to Sharepoint, Google Drive, etc."
-                        />
-                      </div>
-                    )}
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                      <label>Filing Storage Link</label>
+                      <input
+                        type="url"
+                        name="filingStorageLink"
+                        value={formData.filingStorageLink}
+                        onChange={handleChange}
+                        placeholder="Link to Sharepoint, Google Drive, etc."
+                      />
+                    </div>
 
                     {shouldShowField('compliancePageLink') && (
                       <div className="form-group" style={{ gridColumn: '1 / -1' }}>

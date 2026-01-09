@@ -279,7 +279,7 @@ async function main() {
       state: 'NY',
       stateAgency: 'Test Agency - New York',
       description: 'Test account type requiring only link fields',
-      requiredFields: JSON.stringify(['filingStorageLink', 'compliancePageLink', 'passwordManagerLink']),
+      requiredFields: JSON.stringify(['compliancePageLink', 'passwordManagerLink']),
       defaultDuration: '12',
     },
     {
@@ -303,7 +303,7 @@ async function main() {
       state: 'WA',
       stateAgency: 'Test Agency - Washington',
       description: 'Test account type for document management',
-      requiredFields: JSON.stringify(['entityName', 'filingStorageLink', 'filingDate']),
+      requiredFields: JSON.stringify(['entityName', 'filingDate']),
       defaultDuration: '3',
     },
     {
@@ -327,7 +327,7 @@ async function main() {
       state: 'PA',
       stateAgency: 'Test Agency - Pennsylvania',
       description: 'Test account type for tracking annual renewals',
-      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate', 'filingStorageLink']),
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '12',
     },
     {
@@ -343,7 +343,7 @@ async function main() {
       state: 'NC',
       stateAgency: 'Test Agency - North Carolina',
       description: 'Test account type requiring all fields',
-      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate', 'filingStorageLink', 'compliancePageLink', 'passwordManagerLink']),
+      requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate', 'compliancePageLink', 'passwordManagerLink']),
       defaultDuration: '12',
     },
     {
