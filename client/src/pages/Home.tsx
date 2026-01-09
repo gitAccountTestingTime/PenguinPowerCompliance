@@ -536,7 +536,7 @@ function Home() {
         alert('Compliance submission created successfully!');
       }
       
-      handleCloseComplianceModal();
+      handleCloseComplianceModal(true);
       fetchData();
     } catch (error) {
       console.error('Error creating compliance:', error);
