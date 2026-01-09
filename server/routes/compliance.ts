@@ -5,14 +5,33 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Get all compliance account types (optionally filtered by state)
+// Get all compliance scopes
+router.get('/scopes', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const scopes = await prisma.complianceScope.findMany({
+      where: { isActive: true },
+      orderBy: { code: 'asc' },
+    });
+    
+    res.json(scopes);
+  } catch (error) {
+    console.error('Error fetching scopes:', error);
+    res.status(500).json({ error: 'Failed to fetch scopes' });
+  }
+});
+
+// Get all compliance account types (optionally filtered by state/scope)
 router.get('/account-types', authenticate, async (req: AuthRequest, res) => {
   try {
     const { state } = req.query;
     
     const accountTypes = await prisma.complianceAccountType.findMany({
-      where: state ? { state: String(state).toUpperCase(), isActive: true } : { isActive: true },
-      orderBy: [{ state: 'asc' }, { name: 'asc' }],
+      where: state ? { 
+        scope: { code: String(state).toUpperCase() },
+        isActive: true 
+      } : { isActive: true },
+      include: { scope: true },
+      orderBy: [{ scopeId: 'asc' }, { name: 'asc' }],
     });
     
     res.json(accountTypes);
@@ -82,12 +101,24 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       notes,
     } = req.body;
 
+    // Validate complianceAccountTypeId if provided
+    let validatedAccountTypeId = null;
+    if (complianceAccountTypeId) {
+      const accountType = await prisma.complianceAccountType.findUnique({
+        where: { id: complianceAccountTypeId },
+      });
+      if (!accountType) {
+        return res.status(400).json({ error: 'Invalid compliance account type ID' });
+      }
+      validatedAccountTypeId = complianceAccountTypeId;
+    }
+
     const submission = await prisma.complianceSubmission.create({
       data: {
         complianceType,
         state,
         stateAgency,
-        complianceAccountTypeId: complianceAccountTypeId || null,
+        complianceAccountTypeId: validatedAccountTypeId,
         entityName,
         registrationNumber,
         submittedOn: submittedOn ? new Date(submittedOn) : null,
@@ -116,6 +147,16 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
+
+    // Validate complianceAccountTypeId if provided in the update
+    if (data.complianceAccountTypeId !== undefined && data.complianceAccountTypeId !== null) {
+      const accountType = await prisma.complianceAccountType.findUnique({
+        where: { id: data.complianceAccountTypeId },
+      });
+      if (!accountType) {
+        return res.status(400).json({ error: 'Invalid compliance account type ID' });
+      }
+    }
 
     // Convert date strings to Date objects
     if (data.submittedOn) data.submittedOn = new Date(data.submittedOn);

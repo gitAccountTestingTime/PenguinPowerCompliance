@@ -39,6 +39,9 @@ export const deleteSubmission = (id: string) => api.delete(`/compliance/${id}`);
 export const getAccountTypes = (state?: string) => 
   api.get('/compliance/account-types', { params: state ? { state } : {} });
 
+// Compliance Scopes
+export const getScopes = () => api.get('/compliance/scopes');
+
 // State Resources
 export const getResources = (params?: any) => api.get('/resources', { params });
 export const getResource = (id: string) => api.get(`/resources/${id}`);

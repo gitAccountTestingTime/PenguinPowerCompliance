@@ -12,7 +12,8 @@ router.get('/', authenticate, async (req, res) => {
 
     const where: any = {};
     if (state) {
-      where.state = (state as string).toUpperCase();
+      // Look up scope by code
+      where.scope = { code: (state as string).toUpperCase() };
     }
     if (complianceType) {
       // Use contains for more flexible matching (case-sensitive in SQLite)
@@ -31,7 +32,8 @@ router.get('/', authenticate, async (req, res) => {
     
     const resources = await prisma.stateResource.findMany({
       where,
-      orderBy: [{ state: 'asc' }, { complianceType: 'asc' }],
+      include: { scope: true },
+      orderBy: [{ scopeId: 'asc' }, { complianceType: 'asc' }],
     });
 
     console.log(`Found ${resources.length} resources for state: ${state}, type: ${complianceType}`);
@@ -53,6 +55,7 @@ router.get('/:id', authenticate, async (req, res) => {
 
     const resource = await prisma.stateResource.findUnique({
       where: { id },
+      include: { scope: true },
     });
 
     if (!resource) {
@@ -81,9 +84,18 @@ router.post('/', authenticate, async (req, res) => {
       additionalNotes,
     } = req.body;
 
+    // Look up scope by code
+    const scope = await prisma.complianceScope.findUnique({
+      where: { code: state.toUpperCase() },
+    });
+
+    if (!scope) {
+      return res.status(400).json({ error: 'Invalid state/scope code' });
+    }
+
     const resource = await prisma.stateResource.create({
       data: {
-        state,
+        scopeId: scope.id,
         complianceType,
         title,
         description,
@@ -93,6 +105,7 @@ router.post('/', authenticate, async (req, res) => {
         portalLink,
         additionalNotes,
       },
+      include: { scope: true },
     });
 
     res.json(resource);

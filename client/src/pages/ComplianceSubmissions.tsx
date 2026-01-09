@@ -6,13 +6,23 @@ import {
   deleteSubmission,
   getAccountTypes,
   getResources,
+  getScopes,
 } from '../services/api';
+
+interface ComplianceScope {
+  id: string;
+  code: string;
+  name: string;
+  scopeType: string;
+  isActive: boolean;
+}
 
 interface ComplianceAccountType {
   id: string;
   name: string;
-  state: string;
-  stateAgency: string;
+  scopeId: string;
+  scope: ComplianceScope;
+  agency: string;
   description?: string;
   requiredFields?: string;
   defaultDuration?: string;
@@ -67,6 +77,8 @@ function ComplianceSubmissions() {
   const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [relatedResource, setRelatedResource] = useState<any>(null);
   const [showResourceModal, setShowResourceModal] = useState(false);
+  const [scopes, setScopes] = useState<ComplianceScope[]>([]);
+  const [showScopeGuide, setShowScopeGuide] = useState(false);
   
   // Sorting and filtering state
   const [sortField, setSortField] = useState<string>('expirationDate');
@@ -78,21 +90,22 @@ function ComplianceSubmissions() {
   useEffect(() => {
     fetchSubmissions();
     fetchAccountTypes();
+    fetchScopes();
   }, []);
 
   useEffect(() => {
     // Filter account types when state changes
     if (formData.state) {
       const filtered = accountTypes.filter(
-        (type) => type.state.toUpperCase() === formData.state.toUpperCase()
+        (type) => type.scope.code.toUpperCase() === formData.state.toUpperCase()
       );
       setFilteredAccountTypes(filtered);
       
       // Auto-populate agency if account type is selected
       if (formData.complianceAccountTypeId) {
         const selectedType = accountTypes.find(t => t.id === formData.complianceAccountTypeId);
-        if (selectedType && selectedType.state.toUpperCase() === formData.state.toUpperCase()) {
-          setFormData(prev => ({ ...prev, stateAgency: selectedType.stateAgency }));
+        if (selectedType && selectedType.scope.code.toUpperCase() === formData.state.toUpperCase()) {
+          setFormData(prev => ({ ...prev, stateAgency: selectedType.agency }));
         } else {
           // Clear account type if it doesn't match the state
           setFormData(prev => ({ ...prev, complianceAccountTypeId: '', stateAgency: '' }));
@@ -151,6 +164,15 @@ function ComplianceSubmissions() {
     }
   };
 
+  const fetchScopes = async () => {
+    try {
+      const response = await getScopes();
+      setScopes(response.data);
+    } catch (error) {
+      console.error('Error fetching scopes:', error);
+    }
+  };
+
   const handleOpenModal = (submission?: Submission) => {
     if (submission) {
       setEditingSubmission(submission);
@@ -169,7 +191,13 @@ function ComplianceSubmissions() {
     setShowModal(true);
   };
 
-  const handleCloseModal = () => {
+  const handleCloseModal = (skipConfirmation = false) => {
+    if (!skipConfirmation) {
+      const confirmed = window.confirm('Are you sure you want to close this form? Any unsaved changes will be lost.');
+      if (!confirmed) {
+        return;
+      }
+    }
     setShowModal(false);
     setEditingSubmission(null);
     setFormData(emptySubmission);
@@ -189,8 +217,8 @@ function ComplianceSubmissions() {
           ...formData, 
           [name]: value,
           complianceType: selectedType.name,
-          stateAgency: selectedType.stateAgency,
-          state: selectedType.state,
+          stateAgency: selectedType.agency,
+          state: selectedType.scope.code,
           duration: selectedType.defaultDuration || '',
         });
         return;
@@ -227,7 +255,7 @@ function ComplianceSubmissions() {
     try {
       const requiredFields = JSON.parse(selectedType.requiredFields);
       // Always show certain fields
-      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status', 'filingStorageLink'];
+      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status', 'filingStorageLink', 'filingDate'];
       if (alwaysShow.includes(fieldName)) {
         return true;
       }
@@ -279,7 +307,7 @@ function ComplianceSubmissions() {
       } else {
         await createSubmission(cleanData);
       }
-      handleCloseModal();
+      handleCloseModal(true);
       fetchSubmissions();
     } catch (error) {
       console.error('Error saving submission:', error);
@@ -520,7 +548,7 @@ function ComplianceSubmissions() {
       )}
 
       {showModal && (
-        <div className="modal-overlay" onClick={handleCloseModal}>
+        <div className="modal-overlay" onClick={() => handleCloseModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
@@ -533,10 +561,10 @@ function ComplianceSubmissions() {
 
             <form onSubmit={handleSubmit}>
               <div className="grid grid-2">
-                {/* Step 1: Select State */}
+                {/* Step 1: Select Jurisdiction */}
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: '1.1em', fontWeight: '600' }}>
-                    Step 1: Select State <span style={{ color: '#e74c3c' }}>*</span>
+                    Step 1: Select Jurisdiction <span style={{ color: '#e74c3c' }}>*</span>
                   </label>
                   <input
                     type="text"
@@ -544,13 +572,46 @@ function ComplianceSubmissions() {
                     value={formData.state}
                     onChange={handleChange}
                     required
-                    placeholder="Enter 2-letter state code (e.g., CA, NY, TX)"
-                    maxLength={2}
+                    placeholder="Enter code (e.g., CA, NY, TX, US for Federal)"
+                    maxLength={10}
                     style={{ textTransform: 'uppercase', fontSize: '1.1em' }}
                   />
-                  {!formData.state && (
+                  {!formData.state ? (
                     <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
-                      Enter state code to see available compliance account types
+                      Enter jurisdiction code to see available compliance types.{' '}
+                      <button
+                        type="button"
+                        onClick={() => setShowScopeGuide(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3498db',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: 'inherit'
+                        }}
+                      >
+                        View all valid codes
+                      </button>
+                    </small>
+                  ) : (
+                    <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowScopeGuide(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#3498db',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                          fontSize: 'inherit'
+                        }}
+                      >
+                        View all valid codes
+                      </button>
                     </small>
                   )}
                 </div>
@@ -571,7 +632,7 @@ function ComplianceSubmissions() {
                       <option value="">-- Select a Compliance Account Type --</option>
                       {filteredAccountTypes.map((type) => (
                         <option key={type.id} value={type.id}>
-                          {type.name} ({type.stateAgency})
+                          {type.name} ({type.agency})
                         </option>
                       ))}
                     </select>
@@ -787,7 +848,7 @@ function ComplianceSubmissions() {
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>
+                <button type="button" className="btn btn-secondary" onClick={() => handleCloseModal(true)}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
@@ -876,6 +937,88 @@ function ComplianceSubmissions() {
                 type="button" 
                 className="btn btn-secondary" 
                 onClick={() => setShowResourceModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scope Guide Modal */}
+      {showScopeGuide && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowScopeGuide(false)}
+          style={{ zIndex: 1002 }}
+        >
+          <div 
+            className="modal" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">
+                📋 Valid Jurisdiction Codes
+              </h2>
+              <button className="modal-close" onClick={() => setShowScopeGuide(false)}>
+                ×
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem', color: '#7f8c8d' }}>
+                Use these codes when selecting a jurisdiction. Codes are case-insensitive.
+              </p>
+
+              {/* Group by scope type */}
+              {['FEDERAL', 'STATE', 'CITY', 'COUNTY'].map(scopeType => {
+                const scopesOfType = scopes.filter((s: ComplianceScope) => s.scopeType === scopeType);
+                if (scopesOfType.length === 0) return null;
+
+                return (
+                  <div key={scopeType} style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{ 
+                      fontSize: '1rem', 
+                      fontWeight: '600', 
+                      marginBottom: '0.75rem', 
+                      color: '#2c3e50',
+                      borderBottom: '2px solid #3498db',
+                      paddingBottom: '0.25rem'
+                    }}>
+                      {scopeType.charAt(0) + scopeType.slice(1).toLowerCase()}
+                    </h3>
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                      gap: '0.5rem' 
+                    }}>
+                      {scopesOfType.map((scope: ComplianceScope) => (
+                        <div 
+                          key={scope.id}
+                          style={{ 
+                            padding: '0.5rem', 
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          <strong style={{ color: '#3498db' }}>{scope.code}</strong>
+                          {' - '}
+                          <span style={{ color: '#34495e' }}>{scope.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setShowScopeGuide(false)}
               >
                 Close
               </button>

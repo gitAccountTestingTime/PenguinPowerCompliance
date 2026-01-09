@@ -35,11 +35,24 @@ model TodoItem {
   relatedSubmission   ComplianceSubmission? @relation(fields: [relatedSubmissionId], references: [id])
 }
 
+model ComplianceScope {
+  id                    String                 @id @default(uuid())
+  code                  String                 @unique // e.g., "CA", "NY", "US", "NYC"
+  name                  String                 // e.g., "California", "New York", "Federal", "New York City"
+  scopeType             String                 // "STATE", "FEDERAL", "CITY", "COUNTY"
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  complianceAccountTypes ComplianceAccountType[]
+  stateResources        StateResource[]
+}
+
 model ComplianceAccountType {
   id                    String                 @id @default(uuid())
   name                  String                 // e.g., "Employer Payroll Tax Account", "Sales Tax Permit"
-  state                 String                 // Two-letter state code
-  stateAgency           String                 // e.g., "Department of Revenue", "Secretary of State"
+  scopeId               String                 // Reference to ComplianceScope
+  scope                 ComplianceScope        @relation(fields: [scopeId], references: [id])
+  agency                String                 // e.g., "Department of Revenue", "Secretary of State"
   description           String?                // Description of this account type
   requiredFields        String?                // JSON array of required field names
   defaultDuration       String?                // Default duration/frequency (e.g., "Annual", "Biennial", "Quarterly")
@@ -48,14 +61,14 @@ model ComplianceAccountType {
   updatedAt             DateTime               @updatedAt
   complianceSubmissions ComplianceSubmission[]
   
-  @@unique([name, state])
+  @@unique([name, scopeId, agency])
 }
 
 model ComplianceSubmission {
   id                      String                  @id @default(uuid())
   complianceType          String                  // e.g., "SOS Registration", "Tax Filing", etc.
-  state                   String                  // Two-letter state code
-  stateAgency             String                  // e.g., "Secretary of State", "Department of Revenue"
+  state                   String                  // Two-letter state code (kept for backward compatibility)
+  stateAgency             String                  // e.g., "Secretary of State", "Department of Revenue" (kept for backward compatibility)
   
   // Compliance Account Type relationship
   complianceAccountTypeId String?
@@ -83,18 +96,19 @@ model ComplianceSubmission {
 }
 
 model StateResource {
-  id                String   @id @default(uuid())
-  state             String   // Two-letter state code
-  complianceType    String   // Type of compliance submission
+  id                String          @id @default(uuid())
+  scopeId           String          // Reference to ComplianceScope
+  scope             ComplianceScope @relation(fields: [scopeId], references: [id])
+  complianceType    String          // Type of compliance submission
   title             String
-  description       String   // Detailed guide/process description
-  requiredDocuments String?  // JSON array of required documents
-  filingFrequency   String?  // e.g., "Annual", "Biennial"
+  description       String          // Detailed guide/process description
+  requiredDocuments String?         // JSON array of required documents
+  filingFrequency   String?         // e.g., "Annual", "Biennial"
   fees              String?
   portalLink        String?
   additionalNotes   String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 }
 
 model NexusData {

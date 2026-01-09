@@ -1,14 +1,113 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding database with sample resources...');
+  console.log('Seeding database...');
+
+  // Create a test user for development
+  console.log('Creating test user...');
+  const hashedPassword = await bcrypt.hash('password123', 10);
+  await prisma.user.upsert({
+    where: { email: 'test@example.com' },
+    update: {},
+    create: {
+      email: 'test@example.com',
+      password: hashedPassword,
+      name: 'Test User',
+    },
+  });
+  console.log('Test user created: test@example.com / password123');
+
+  // Create Compliance Scopes (50 US States + Federal)
+  console.log('Creating compliance scopes...');
+  const usStates = [
+    { code: 'AL', name: 'Alabama' },
+    { code: 'AK', name: 'Alaska' },
+    { code: 'AZ', name: 'Arizona' },
+    { code: 'AR', name: 'Arkansas' },
+    { code: 'CA', name: 'California' },
+    { code: 'CO', name: 'Colorado' },
+    { code: 'CT', name: 'Connecticut' },
+    { code: 'DE', name: 'Delaware' },
+    { code: 'FL', name: 'Florida' },
+    { code: 'GA', name: 'Georgia' },
+    { code: 'HI', name: 'Hawaii' },
+    { code: 'ID', name: 'Idaho' },
+    { code: 'IL', name: 'Illinois' },
+    { code: 'IN', name: 'Indiana' },
+    { code: 'IA', name: 'Iowa' },
+    { code: 'KS', name: 'Kansas' },
+    { code: 'KY', name: 'Kentucky' },
+    { code: 'LA', name: 'Louisiana' },
+    { code: 'ME', name: 'Maine' },
+    { code: 'MD', name: 'Maryland' },
+    { code: 'MA', name: 'Massachusetts' },
+    { code: 'MI', name: 'Michigan' },
+    { code: 'MN', name: 'Minnesota' },
+    { code: 'MS', name: 'Mississippi' },
+    { code: 'MO', name: 'Missouri' },
+    { code: 'MT', name: 'Montana' },
+    { code: 'NE', name: 'Nebraska' },
+    { code: 'NV', name: 'Nevada' },
+    { code: 'NH', name: 'New Hampshire' },
+    { code: 'NJ', name: 'New Jersey' },
+    { code: 'NM', name: 'New Mexico' },
+    { code: 'NY', name: 'New York' },
+    { code: 'NC', name: 'North Carolina' },
+    { code: 'ND', name: 'North Dakota' },
+    { code: 'OH', name: 'Ohio' },
+    { code: 'OK', name: 'Oklahoma' },
+    { code: 'OR', name: 'Oregon' },
+    { code: 'PA', name: 'Pennsylvania' },
+    { code: 'RI', name: 'Rhode Island' },
+    { code: 'SC', name: 'South Carolina' },
+    { code: 'SD', name: 'South Dakota' },
+    { code: 'TN', name: 'Tennessee' },
+    { code: 'TX', name: 'Texas' },
+    { code: 'UT', name: 'Utah' },
+    { code: 'VT', name: 'Vermont' },
+    { code: 'VA', name: 'Virginia' },
+    { code: 'WA', name: 'Washington' },
+    { code: 'WV', name: 'West Virginia' },
+    { code: 'WI', name: 'Wisconsin' },
+    { code: 'WY', name: 'Wyoming' },
+    { code: 'US', name: 'Federal', scopeType: 'FEDERAL' },
+  ];
+
+  for (const state of usStates) {
+    await prisma.complianceScope.upsert({
+      where: { code: state.code },
+      update: {},
+      create: {
+        code: state.code,
+        name: state.name,
+        scopeType: (state as any).scopeType || 'STATE',
+        isActive: true,
+      },
+    });
+  }
+
+  console.log(`Created/Updated ${usStates.length} compliance scopes`);
+
+  // Get scope IDs for use in resources and account types
+  const caScope = await prisma.complianceScope.findUnique({ where: { code: 'CA' } });
+  const nyScope = await prisma.complianceScope.findUnique({ where: { code: 'NY' } });
+  const txScope = await prisma.complianceScope.findUnique({ where: { code: 'TX' } });
+  const flScope = await prisma.complianceScope.findUnique({ where: { code: 'FL' } });
+  const waScope = await prisma.complianceScope.findUnique({ where: { code: 'WA' } });
+
+  // Validate all scopes exist
+  if (!caScope || !nyScope || !txScope || !flScope || !waScope) {
+    throw new Error('Failed to create required compliance scopes');
+  }
 
   // Sample State Resources
+  console.log('Seeding state resources...');
   const resources = [
     {
-      state: 'CA',
+      scopeId: caScope!.id,
       complianceType: 'SOS Business Entity',
       title: 'California Secretary of State Business Registration',
       description:
@@ -22,7 +121,7 @@ async function main() {
         'Statement of Information must be filed within 90 days of registration and every 2 years thereafter.',
     },
     {
-      state: 'NY',
+      scopeId: nyScope!.id,
       complianceType: 'Business Entity Filing',
       title: 'New York Department of State Business Registration',
       description:
@@ -36,7 +135,7 @@ async function main() {
         'Publication requirement must be completed within 120 days of filing.',
     },
     {
-      state: 'TX',
+      scopeId: txScope!.id,
       complianceType: 'Certificate of Formation',
       title: 'Texas Secretary of State Business Filing',
       description:
@@ -49,7 +148,7 @@ async function main() {
       additionalNotes: 'Texas requires annual franchise tax reports for most entities.',
     },
     {
-      state: 'FL',
+      scopeId: flScope!.id,
       complianceType: 'Sunbiz Entity Registration',
       title: 'Florida Department of State Division of Corporations',
       description:
@@ -63,7 +162,7 @@ async function main() {
         'Annual reports are due by May 1st each year. Late fees apply after deadline.',
     },
     {
-      state: 'CA',
+      scopeId: caScope!.id,
       complianceType: 'Unemployment Insurance',
       title: 'California Employment Development Department (EDD) Registration',
       description:
@@ -77,7 +176,7 @@ async function main() {
         'Registration must be completed within 15 days of paying wages over $100.',
     },
     {
-      state: 'WA',
+      scopeId: waScope!.id,
       complianceType: 'Business Entity Registration',
       title: 'Washington Secretary of State Business Licensing',
       description:
@@ -99,6 +198,20 @@ async function main() {
 
   console.log(`Created ${resources.length} sample resources`);
   
+  // Get additional scope IDs for test account types
+  const ilScope = await prisma.complianceScope.findUnique({ where: { code: 'IL' } });
+  const ohScope = await prisma.complianceScope.findUnique({ where: { code: 'OH' } });
+  const paScope = await prisma.complianceScope.findUnique({ where: { code: 'PA' } });
+  const gaScope = await prisma.complianceScope.findUnique({ where: { code: 'GA' } });
+  const ncScope = await prisma.complianceScope.findUnique({ where: { code: 'NC' } });
+  const miScope = await prisma.complianceScope.findUnique({ where: { code: 'MI' } });
+  const njScope = await prisma.complianceScope.findUnique({ where: { code: 'NJ' } });
+
+  // Validate all additional scopes exist
+  if (!ilScope || !ohScope || !paScope || !gaScope || !ncScope || !miScope || !njScope) {
+    throw new Error('Failed to create required compliance scopes for test account types');
+  }
+  
   // Sample Compliance Account Types
   console.log('Seeding compliance account types...');
   
@@ -106,32 +219,32 @@ async function main() {
     // California
     {
       name: 'Employer Payroll Tax Account',
-      state: 'CA',
-      stateAgency: 'Employment Development Department (EDD)',
+      scopeId: caScope!.id,
+      agency: 'Employment Development Department (EDD)',
       description: 'State unemployment insurance and payroll tax account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'Sales and Use Tax Permit',
-      state: 'CA',
-      stateAgency: 'California Department of Tax and Fee Administration (CDTFA)',
+      scopeId: caScope!.id,
+      agency: 'California Department of Tax and Fee Administration (CDTFA)',
       description: 'Permit for collecting and remitting sales tax',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '1',
     },
     {
       name: 'SOS Business Entity',
-      state: 'CA',
-      stateAgency: 'Secretary of State',
+      scopeId: caScope!.id,
+      agency: 'Secretary of State',
       description: 'Business entity registration (LLC, Corporation, etc.)',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '24',
     },
     {
       name: 'Workers\' Compensation Insurance',
-      state: 'CA',
-      stateAgency: 'Department of Industrial Relations',
+      scopeId: caScope!.id,
+      agency: 'Department of Industrial Relations',
       description: 'Workers compensation coverage requirement',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '12',
@@ -140,32 +253,32 @@ async function main() {
     // New York
     {
       name: 'Employer Unemployment Account',
-      state: 'NY',
-      stateAgency: 'Department of Labor',
+      scopeId: nyScope!.id,
+      agency: 'Department of Labor',
       description: 'Unemployment insurance employer account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'Sales Tax Certificate of Authority',
-      state: 'NY',
-      stateAgency: 'Department of Taxation and Finance',
+      scopeId: nyScope!.id,
+      agency: 'Department of Taxation and Finance',
       description: 'Certificate to collect and remit sales tax',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
       defaultDuration: '3',
     },
     {
       name: 'Business Entity Filing',
-      state: 'NY',
-      stateAgency: 'Department of State',
+      scopeId: nyScope!.id,
+      agency: 'Department of State',
       description: 'Business formation and registration',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '24',
     },
     {
       name: 'Withholding Tax Account',
-      state: 'NY',
-      stateAgency: 'Department of Taxation and Finance',
+      scopeId: nyScope!.id,
+      agency: 'Department of Taxation and Finance',
       description: 'Employer withholding tax registration',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
       defaultDuration: '3',
@@ -174,32 +287,32 @@ async function main() {
     // Texas
     {
       name: 'Texas Unemployment Account',
-      state: 'TX',
-      stateAgency: 'Texas Workforce Commission',
+      scopeId: txScope!.id,
+      agency: 'Texas Workforce Commission',
       description: 'Unemployment insurance employer account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'Sales and Use Tax Permit',
-      state: 'TX',
-      stateAgency: 'Texas Comptroller of Public Accounts',
+      scopeId: txScope!.id,
+      agency: 'Texas Comptroller of Public Accounts',
       description: 'Permit for sales and use tax collection',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '1',
     },
     {
       name: 'Certificate of Formation',
-      state: 'TX',
-      stateAgency: 'Secretary of State',
+      scopeId: txScope!.id,
+      agency: 'Secretary of State',
       description: 'Business entity formation filing',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '12',
     },
     {
       name: 'Franchise Tax Account',
-      state: 'TX',
-      stateAgency: 'Texas Comptroller of Public Accounts',
+      scopeId: txScope!.id,
+      agency: 'Texas Comptroller of Public Accounts',
       description: 'Texas franchise tax reporting account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
       defaultDuration: '12',
@@ -208,24 +321,24 @@ async function main() {
     // Florida
     {
       name: 'Reemployment Tax Account',
-      state: 'FL',
-      stateAgency: 'Department of Revenue',
+      scopeId: flScope!.id,
+      agency: 'Department of Revenue',
       description: 'Unemployment insurance tax account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'Sales and Use Tax Registration',
-      state: 'FL',
-      stateAgency: 'Department of Revenue',
+      scopeId: flScope!.id,
+      agency: 'Department of Revenue',
       description: 'Registration for sales tax collection',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
       defaultDuration: '1',
     },
     {
       name: 'Sunbiz Entity Registration',
-      state: 'FL',
-      stateAgency: 'Division of Corporations',
+      scopeId: flScope!.id,
+      agency: 'Division of Corporations',
       description: 'Business entity registration',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate']),
       defaultDuration: '12',
@@ -234,32 +347,32 @@ async function main() {
     // Washington
     {
       name: 'Unemployment Insurance Account',
-      state: 'WA',
-      stateAgency: 'Employment Security Department',
+      scopeId: waScope!.id,
+      agency: 'Employment Security Department',
       description: 'Employer unemployment insurance account',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'Business License (UBI)',
-      state: 'WA',
-      stateAgency: 'Department of Revenue',
+      scopeId: waScope!.id,
+      agency: 'Department of Revenue',
       description: 'Unified Business Identifier and state business license',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '12',
     },
     {
       name: 'Retail Sales Tax License',
-      state: 'WA',
-      stateAgency: 'Department of Revenue',
+      scopeId: waScope!.id,
+      agency: 'Department of Revenue',
       description: 'License for collecting retail sales tax',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '1',
     },
     {
       name: 'Business Entity Registration',
-      state: 'WA',
-      stateAgency: 'Secretary of State',
+      scopeId: waScope!.id,
+      agency: 'Secretary of State',
       description: 'Business formation and registration',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate']),
       defaultDuration: '12',
@@ -268,96 +381,96 @@ async function main() {
     // TEST ACCOUNT TYPES - Demonstrating Dynamic Field Variations
     {
       name: 'TEST: Minimal Fields Only',
-      state: 'CA',
-      stateAgency: 'Test Agency - California',
+      scopeId: caScope!.id,
+      agency: 'Test Agency - California',
       description: 'Test account type with only entity name required',
       requiredFields: JSON.stringify(['entityName']),
       defaultDuration: '0',
     },
     {
       name: 'TEST: Links Only Account',
-      state: 'NY',
-      stateAgency: 'Test Agency - New York',
+      scopeId: nyScope!.id,
+      agency: 'Test Agency - New York',
       description: 'Test account type requiring only link fields',
       requiredFields: JSON.stringify(['compliancePageLink', 'passwordManagerLink']),
       defaultDuration: '12',
     },
     {
       name: 'TEST: Dates Required',
-      state: 'TX',
-      stateAgency: 'Test Agency - Texas',
+      scopeId: txScope!.id,
+      agency: 'Test Agency - Texas',
       description: 'Test account type focusing on date tracking',
       requiredFields: JSON.stringify(['filingDate', 'expirationDate']),
       defaultDuration: '6',
     },
     {
       name: 'TEST: Registration Focus',
-      state: 'FL',
-      stateAgency: 'Test Agency - Florida',
+      scopeId: flScope!.id,
+      agency: 'Test Agency - Florida',
       description: 'Test account type for registration number and entity tracking',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber']),
       defaultDuration: '24',
     },
     {
       name: 'TEST: Document Storage',
-      state: 'WA',
-      stateAgency: 'Test Agency - Washington',
+      scopeId: waScope!.id,
+      agency: 'Test Agency - Washington',
       description: 'Test account type for document management',
       requiredFields: JSON.stringify(['entityName', 'filingDate']),
       defaultDuration: '3',
     },
     {
       name: 'TEST: Full Compliance Portal',
-      state: 'IL',
-      stateAgency: 'Test Agency - Illinois',
+      scopeId: ilScope!.id,
+      agency: 'Test Agency - Illinois',
       description: 'Test account type for portal access tracking',
       requiredFields: JSON.stringify(['registrationNumber', 'compliancePageLink', 'passwordManagerLink', 'expirationDate']),
       defaultDuration: '1',
     },
     {
       name: 'TEST: Basic Identity',
-      state: 'OH',
-      stateAgency: 'Test Agency - Ohio',
+      scopeId: ohScope!.id,
+      agency: 'Test Agency - Ohio',
       description: 'Test account type with just entity and filing date',
       requiredFields: JSON.stringify(['entityName', 'filingDate']),
       defaultDuration: '12',
     },
     {
       name: 'TEST: Annual Renewal',
-      state: 'PA',
-      stateAgency: 'Test Agency - Pennsylvania',
+      scopeId: paScope!.id,
+      agency: 'Test Agency - Pennsylvania',
       description: 'Test account type for tracking annual renewals',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'expirationDate']),
       defaultDuration: '12',
     },
     {
       name: 'TEST: Secure Access',
-      state: 'GA',
-      stateAgency: 'Test Agency - Georgia',
+      scopeId: gaScope!.id,
+      agency: 'Test Agency - Georgia',
       description: 'Test account type for secure portal with credentials',
       requiredFields: JSON.stringify(['compliancePageLink', 'passwordManagerLink']),
       defaultDuration: '36',
     },
     {
       name: 'TEST: Comprehensive Tracking',
-      state: 'NC',
-      stateAgency: 'Test Agency - North Carolina',
+      scopeId: ncScope!.id,
+      agency: 'Test Agency - North Carolina',
       description: 'Test account type requiring all fields',
       requiredFields: JSON.stringify(['entityName', 'registrationNumber', 'filingDate', 'expirationDate', 'compliancePageLink', 'passwordManagerLink']),
       defaultDuration: '12',
     },
     {
       name: 'TEST: Expiration Only',
-      state: 'MI',
-      stateAgency: 'Test Agency - Michigan',
+      scopeId: miScope!.id,
+      agency: 'Test Agency - Michigan',
       description: 'Test account type tracking only expiration',
       requiredFields: JSON.stringify(['expirationDate']),
       defaultDuration: '24',
     },
     {
       name: 'TEST: No Extra Fields',
-      state: 'NJ',
-      stateAgency: 'Test Agency - New Jersey',
+      scopeId: njScope!.id,
+      agency: 'Test Agency - New Jersey',
       description: 'Test account type with no additional fields beyond defaults',
       requiredFields: JSON.stringify([]),
       defaultDuration: '0',
@@ -365,16 +478,22 @@ async function main() {
   ];
   
   for (const accountType of accountTypes) {
-    await prisma.complianceAccountType.upsert({
-      where: {
-        name_state: {
-          name: accountType.name,
-          state: accountType.state,
+    try {
+      await prisma.complianceAccountType.upsert({
+        where: {
+          name_scopeId_agency: {
+            name: accountType.name,
+            scopeId: accountType.scopeId,
+            agency: accountType.agency,
+          },
         },
-      },
-      update: accountType,
-      create: accountType,
-    });
+        update: accountType,
+        create: accountType,
+      });
+    } catch (error) {
+      console.error(`Failed to create/update account type: ${accountType.name} - ${accountType.agency}`, error);
+      throw error;
+    }
   }
   
   console.log(`Created/Updated ${accountTypes.length} compliance account types`);

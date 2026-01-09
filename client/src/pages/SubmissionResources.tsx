@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { getResources, createResource, getAccountTypes } from '../services/api';
 
+interface ComplianceScope {
+  id: string;
+  code: string;
+  name: string;
+  scopeType: string;
+  isActive: boolean;
+}
+
 interface ComplianceAccountType {
   id: string;
   name: string;
-  state: string;
-  stateAgency: string;
+  scopeId: string;
+  scope: ComplianceScope;
+  agency: string;
   description?: string;
   requiredFields?: string;
   defaultDuration?: string;
@@ -15,6 +24,7 @@ interface ComplianceAccountType {
 interface Resource {
   id?: string;
   state: string;
+  scope?: ComplianceScope;
   complianceType: string;
   title: string;
   description: string;
@@ -60,7 +70,7 @@ function SubmissionResources() {
     // Filter account types when state changes in the form
     if (formData.state) {
       const filtered = accountTypes.filter(
-        (type) => type.state.toUpperCase() === formData.state.toUpperCase()
+        (type) => type.scope.code.toUpperCase() === formData.state.toUpperCase()
       );
       setFilteredAccountTypes(filtered);
     } else {
@@ -100,7 +110,7 @@ function SubmissionResources() {
     }
 
     if (stateFilter) {
-      filtered = filtered.filter((r) => r.state === stateFilter);
+      filtered = filtered.filter((r) => (r.scope?.code || r.state) === stateFilter);
     }
 
     if (typeFilter) {
@@ -136,7 +146,7 @@ function SubmissionResources() {
   };
 
   // Get unique states and types for filters
-  const states = [...new Set(resources.map((r) => r.state))].sort();
+  const states = [...new Set(resources.map((r) => r.scope?.code || r.state))].sort();
   const types = [...new Set(resources.map((r) => r.complianceType))].sort();
 
   if (loading) {
@@ -204,7 +214,7 @@ function SubmissionResources() {
             <div key={resource.id} className="card">
               <h3 className="card-title">{resource.title}</h3>
               <div style={{ marginTop: '0.5rem', marginBottom: '1rem' }}>
-                <span className="badge badge-info">{resource.state}</span>
+                <span className="badge badge-info">{resource.scope?.code || resource.state}</span>
                 <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
                   {resource.complianceType}
                 </span>
@@ -237,7 +247,7 @@ function SubmissionResources() {
 
             <div>
               <div style={{ marginBottom: '1rem' }}>
-                <span className="badge badge-info">{selectedResource.state}</span>
+                <span className="badge badge-info">{selectedResource.scope?.code || selectedResource.state}</span>
                 <span className="badge badge-info" style={{ marginLeft: '0.5rem' }}>
                   {selectedResource.complianceType}
                 </span>

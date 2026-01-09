@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
-import { getTodos, createTodo, updateTodo, deleteTodo, getSubmissions, updateSubmission, getExpiringSubmissions, createSubmission, getResources, getAccountTypes } from '../services/api';
+import { getTodos, createTodo, updateTodo, deleteTodo, getSubmissions, updateSubmission, getExpiringSubmissions, createSubmission, getResources, getAccountTypes, getScopes } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+
+interface ComplianceScope {
+  id: string;
+  code: string;
+  name: string;
+  scopeType: string;
+}
 
 interface ComplianceAccountType {
   id: string;
   name: string;
-  state: string;
-  stateAgency: string;
+  scope: ComplianceScope;
+  agency: string;
   description?: string;
   requiredFields?: string;
   defaultDuration?: string;
@@ -94,6 +101,8 @@ function Home() {
   const [accountTypes, setAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [showResourceModal, setShowResourceModal] = useState(false);
+  const [scopes, setScopes] = useState<ComplianceScope[]>([]);
+  const [showScopeGuide, setShowScopeGuide] = useState(false);
   const hasCheckedRenewals = useRef(false);
 
   useEffect(() => {
@@ -105,6 +114,7 @@ function Home() {
     hasCheckedRenewals.current = true;
     
     const initializePage = async () => {
+      await fetchScopes();
       await fetchAccountTypes();
       await checkAndCreateRenewalTodos();
       // fetchData is called within checkAndCreateRenewalTodos, so no need to call it again
@@ -117,7 +127,7 @@ function Home() {
     // Filter account types when state changes in the form
     if (complianceForm.state) {
       const filtered = accountTypes.filter(
-        (type) => type.state.toUpperCase() === complianceForm.state.toUpperCase()
+        (type) => type.scope.code.toUpperCase() === complianceForm.state.toUpperCase()
       );
       setFilteredAccountTypes(filtered);
     } else {
@@ -165,6 +175,15 @@ function Home() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchScopes = async () => {
+    try {
+      const response = await getScopes();
+      setScopes(response.data);
+    } catch (error) {
+      console.error('Error fetching scopes:', error);
     }
   };
 
@@ -374,7 +393,13 @@ function Home() {
     setShowComplianceModal(true);
   };
 
-  const handleCloseComplianceModal = () => {
+  const handleCloseComplianceModal = (skipConfirmation = false) => {
+    if (!skipConfirmation) {
+      const confirmed = window.confirm('Are you sure you want to close this form? Any unsaved changes will be lost.');
+      if (!confirmed) {
+        return;
+      }
+    }
     setShowComplianceModal(false);
     setComplianceForm(emptyCompliance);
     setSelectedTodo(null);
@@ -394,8 +419,8 @@ function Home() {
           ...complianceForm, 
           [name]: value,
           complianceType: selectedType.name,
-          stateAgency: selectedType.stateAgency,
-          state: selectedType.state,
+          stateAgency: selectedType.agency,
+          state: selectedType.scope.code,
           duration: selectedType.defaultDuration || '',
         });
         return;
@@ -432,7 +457,7 @@ function Home() {
     try {
       const requiredFields = JSON.parse(selectedType.requiredFields);
       // Always show certain fields
-      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status', 'filingStorageLink'];
+      const alwaysShow = ['state', 'complianceAccountTypeId', 'complianceType', 'stateAgency', 'status', 'filingStorageLink', 'filingDate'];
       if (alwaysShow.includes(fieldName)) {
         return true;
       }
@@ -672,7 +697,7 @@ function Home() {
 
       {/* Create Compliance Modal */}
       {showComplianceModal && (
-        <div className="modal-overlay" onClick={handleCloseComplianceModal}>
+        <div className="modal-overlay" onClick={() => handleCloseComplianceModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
@@ -686,10 +711,10 @@ function Home() {
 
             <form onSubmit={handleCreateCompliance}>
               <div className="grid grid-2">
-                {/* Step 1: Select State */}
+                {/* Step 1: Select Jurisdiction */}
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: '1.1em', fontWeight: '600' }}>
-                    Step 1: Select State <span style={{ color: '#e74c3c' }}>*</span>
+                    Step 1: Select Jurisdiction <span style={{ color: '#e74c3c' }}>*</span>
                   </label>
                   <input
                     type="text"
@@ -697,10 +722,26 @@ function Home() {
                     value={complianceForm.state}
                     onChange={handleComplianceChange}
                     required
-                    placeholder="Enter 2-letter state code (e.g., CA, NY, TX)"
-                    maxLength={2}
+                    placeholder="Enter code (e.g., CA, NY, TX, US for Federal)"
+                    maxLength={10}
                     style={{ textTransform: 'uppercase', fontSize: '1.1em' }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowScopeGuide(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#3498db',
+                      textDecoration: 'underline',
+                      cursor: 'pointer',
+                      padding: '0',
+                      marginTop: '0.25rem',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    View all valid codes
+                  </button>
                   {complianceForm.state && selectedTodo && !selectedTodo.relatedSubmission && (
                     <small style={{ color: '#27ae60', marginTop: '0.25rem', display: 'block' }}>
                       ✓ Detected from to-do: "{selectedTodo.title}"
@@ -713,7 +754,7 @@ function Home() {
                   )}
                   {!complianceForm.state && !selectedTodo?.relatedSubmission && (
                     <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
-                      Enter state code to see available compliance account types
+                      Enter jurisdiction code to see available compliance account types
                     </small>
                   )}
                 </div>
@@ -734,7 +775,7 @@ function Home() {
                       <option value="">-- Select a Compliance Account Type --</option>
                       {filteredAccountTypes.map((type) => (
                         <option key={type.id} value={type.id}>
-                          {type.name} ({type.stateAgency})
+                          {type.name} ({type.agency})
                         </option>
                       ))}
                     </select>
@@ -804,7 +845,7 @@ function Home() {
                     </div>
 
                     <div className="form-group">
-                      <label>State Agency (Auto-filled)</label>
+                      <label>Agency (Auto-filled)</label>
                       <input
                         type="text"
                         name="stateAgency"
@@ -955,7 +996,7 @@ function Home() {
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={handleCloseComplianceModal}>
+                <button type="button" className="btn btn-secondary" onClick={() => handleCloseComplianceModal(true)}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
@@ -1044,6 +1085,88 @@ function Home() {
                 type="button" 
                 className="btn btn-secondary" 
                 onClick={() => setShowResourceModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scope Guide Modal */}
+      {showScopeGuide && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowScopeGuide(false)}
+          style={{ zIndex: 1002 }}
+        >
+          <div 
+            className="modal" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">
+                📋 Valid Jurisdiction Codes
+              </h2>
+              <button className="modal-close" onClick={() => setShowScopeGuide(false)}>
+                ×
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem', color: '#7f8c8d' }}>
+                Use these codes when selecting a jurisdiction. Codes are case-insensitive.
+              </p>
+
+              {/* Group by scope type */}
+              {['FEDERAL', 'STATE', 'CITY', 'COUNTY'].map(scopeType => {
+                const scopesOfType = scopes.filter(s => s.scopeType === scopeType);
+                if (scopesOfType.length === 0) return null;
+
+                return (
+                  <div key={scopeType} style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{ 
+                      fontSize: '1rem', 
+                      fontWeight: '600', 
+                      marginBottom: '0.75rem', 
+                      color: '#2c3e50',
+                      borderBottom: '2px solid #3498db',
+                      paddingBottom: '0.25rem'
+                    }}>
+                      {scopeType.charAt(0) + scopeType.slice(1).toLowerCase()}
+                    </h3>
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                      gap: '0.5rem' 
+                    }}>
+                      {scopesOfType.map(scope => (
+                        <div 
+                          key={scope.id}
+                          style={{ 
+                            padding: '0.5rem', 
+                            backgroundColor: '#f8f9fa',
+                            borderRadius: '4px',
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          <strong style={{ color: '#3498db' }}>{scope.code}</strong>
+                          {' - '}
+                          <span style={{ color: '#34495e' }}>{scope.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setShowScopeGuide(false)}
               >
                 Close
               </button>
