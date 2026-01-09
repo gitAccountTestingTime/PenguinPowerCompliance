@@ -72,7 +72,7 @@ router.get('/history', authenticate, async (req: AuthRequest, res) => {
 
 // Helper function to analyze nexus (simplified version)
 function analyzeNexus(fileContent: string, fileType: string) {
-  // This is a simplified version. In production, implement proper parsing and analysis
+  // This is obviously fake, but good enough for testing. Hopefully. At least to start.
   const lines = fileContent.split('\n');
   const statesFound = new Set<string>();
 
