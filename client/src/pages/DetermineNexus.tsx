@@ -14,6 +14,7 @@ function DetermineNexus() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState('');
+  const [selectedRecommendations, setSelectedRecommendations] = useState<Set<number>>(new Set());
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -71,9 +72,49 @@ function DetermineNexus() {
         });
       }
       alert('All recommendations added to your to-do list!');
+      setSelectedRecommendations(new Set());
     } catch (error) {
       console.error('Error adding to todo list:', error);
       alert('Failed to add some items to todo list');
+    }
+  };
+
+  const handleAddSelectedToTodoList = async () => {
+    if (!results?.recommendations || selectedRecommendations.size === 0) return;
+
+    try {
+      for (const index of Array.from(selectedRecommendations)) {
+        const rec = results.recommendations[index];
+        await createTodo({
+          title: `${rec.action} - ${rec.state}`,
+          description: rec.description,
+          priority: rec.priority,
+        });
+      }
+      alert(`${selectedRecommendations.size} recommendation(s) added to your to-do list!`);
+      setSelectedRecommendations(new Set());
+    } catch (error) {
+      console.error('Error adding to todo list:', error);
+      alert('Failed to add some items to todo list');
+    }
+  };
+
+  const handleToggleRecommendation = (index: number) => {
+    const newSelected = new Set(selectedRecommendations);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedRecommendations(newSelected);
+  };
+
+  const handleToggleAll = () => {
+    if (selectedRecommendations.size === results?.recommendations?.length) {
+      setSelectedRecommendations(new Set());
+    } else {
+      const allIndices = new Set<number>(results.recommendations.map((_: any, i: number) => i));
+      setSelectedRecommendations(allIndices);
     }
   };
 
@@ -149,12 +190,32 @@ function DetermineNexus() {
             <div className="card">
               <div className="card-header">
                 <h3 className="card-title">Recommendations</h3>
-                <button
-                  className="btn btn-success"
-                  onClick={handleAddAllToTodoList}
-                >
-                  Add All to To-Do List
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleAddSelectedToTodoList}
+                    disabled={selectedRecommendations.size === 0}
+                  >
+                    Add Selected to To-Do List ({selectedRecommendations.size})
+                  </button>
+                  <button
+                    className="btn btn-success"
+                    onClick={handleAddAllToTodoList}
+                  >
+                    Add All to To-Do List
+                  </button>
+                </div>
+              </div>
+              <div style={{ padding: '1rem', borderBottom: '1px solid #eee' }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedRecommendations.size === results.recommendations.length}
+                    onChange={handleToggleAll}
+                    style={{ marginRight: '0.5rem' }}
+                  />
+                  <strong>Select All</strong>
+                </label>
               </div>
               <div>
                 {results.recommendations.map((rec: Recommendation, index: number) => (
@@ -168,6 +229,12 @@ function DetermineNexus() {
                       alignItems: 'flex-start',
                     }}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedRecommendations.has(index)}
+                      onChange={() => handleToggleRecommendation(index)}
+                      style={{ marginRight: '1rem', marginTop: '0.25rem', cursor: 'pointer' }}
+                    />
                     <div style={{ flex: 1 }}>
                       <div>
                         <strong>{rec.state}</strong> -{' '}

@@ -24,7 +24,10 @@ model TodoItem {
   description String?
   priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
   status      String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  itemType    String    @default("TASK") // TASK (user-created), FLAGGED_ITEM (system-suggested)
   dueDate     DateTime?
+  dismissedAt DateTime? // When a FLAGGED_ITEM was dismissed
+  deferredUntil DateTime? // When to show a deferred FLAGGED_ITEM again
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   userId      String
@@ -80,7 +83,8 @@ model ComplianceSubmission {
   filingDate              DateTime?
   expirationDate          DateTime?
   duration                String?                 // Filing frequency/duration (e.g., "Annual", "Biennial", "Quarterly")
-  status                  String                  @default("ACTIVE") // ACTIVE, EXPIRED, PENDING
+  status                  String                  @default("ACTIVE") // ACTIVE, EXPIRED, PENDING, OBSOLETE, USER_DEFERRED, USER_DISMISSED
+  deferDuration           Int?                    // Number of days the submission was deferred (for USER_DEFERRED status)
   
   // Links (not storing actual sensitive data)
   filingStorageLink       String?                 // Link to Sharepoint, Google Drive, etc.

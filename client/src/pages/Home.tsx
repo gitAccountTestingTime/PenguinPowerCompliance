@@ -26,7 +26,10 @@ interface Todo {
   description: string;
   priority: string;
   status: string;
+  itemType: string; // 'TASK' or 'FLAGGED_ITEM'
   dueDate: string | null;
+  dismissedAt?: string | null;
+  deferredUntil?: string | null;
   relatedSubmission?: {
     id: string;
     complianceType: string;
@@ -49,6 +52,7 @@ interface Submission {
   expirationDate: string;
   duration?: string;
   status: string;
+  deferDuration?: number;
   complianceAccountTypeId?: string;
   complianceAccountType?: ComplianceAccountType;
 }
@@ -104,6 +108,9 @@ function Home() {
   const [scopes, setScopes] = useState<ComplianceScope[]>([]);
   const [showScopeGuide, setShowScopeGuide] = useState(false);
   const hasCheckedRenewals = useRef(false);
+  const [showDeferModal, setShowDeferModal] = useState(false);
+  const [deferringTodo, setDeferringTodo] = useState<Todo | null>(null);
+  const [deferDays, setDeferDays] = useState<string>('7');
 
   useEffect(() => {
     // Prevent double execution in StrictMode
@@ -211,9 +218,30 @@ function Home() {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(today.getDate() + 30);
       
+      // First, check for deferred submissions whose defer period has ended
+      for (const submission of allSubmissions) {
+        if (submission.status === 'USER_DEFERRED' && submission.deferDuration) {
+          // Find the related todo to check its deferredUntil date
+          const relatedTodo = existingTodos.find(
+            (todo) => todo.relatedSubmission?.id === submission.id && todo.deferredUntil
+          );
+          
+          if (relatedTodo && relatedTodo.deferredUntil) {
+            const deferredUntilDate = new Date(relatedTodo.deferredUntil);
+            // If defer period has ended, restore submission to ACTIVE
+            if (deferredUntilDate <= today) {
+              await updateSubmission(submission.id, { 
+                status: 'ACTIVE',
+                deferDuration: null
+              });
+            }
+          }
+        }
+      }
+      
       // Process each active submission
       for (const submission of allSubmissions) {
-        // Skip if not active
+        // Skip if not active or if user has deferred/dismissed
         if (submission.status !== 'ACTIVE') continue;
         
         // Calculate when renewal is needed
@@ -251,6 +279,7 @@ function Home() {
               priority: daysUntilRenewal <= 7 ? 'URGENT' : daysUntilRenewal <= 14 ? 'HIGH' : 'MEDIUM',
               dueDate: renewalDate.toISOString(),
               relatedSubmissionId: submission.id,
+              itemType: 'FLAGGED_ITEM', // System-generated suggestions
             });
           }
         }
@@ -282,6 +311,69 @@ function Home() {
         console.error('Error deleting todo:', error);
       }
     }
+  };
+
+  const handleDismissFlaggedItem = async (id: string) => {
+    try {
+      const todo = todos.find(t => t.id === id);
+      
+      // If the todo has a related submission, update its status
+      if (todo?.relatedSubmission?.id) {
+        await updateSubmission(todo.relatedSubmission.id, { 
+          status: 'USER_DISMISSED' 
+        });
+      }
+      
+      // Mark the todo as dismissed
+      await updateTodo(id, { dismissedAt: new Date().toISOString() });
+      fetchData();
+    } catch (error) {
+      console.error('Error dismissing flagged item:', error);
+    }
+  };
+
+  const handleDeferFlaggedItem = async (id: string, days: number) => {
+    try {
+      const todo = todos.find(t => t.id === id);
+      
+      // If the todo has a related submission, update its status
+      if (todo?.relatedSubmission?.id) {
+        await updateSubmission(todo.relatedSubmission.id, { 
+          status: 'USER_DEFERRED',
+          deferDuration: days
+        });
+      }
+      
+      // Defer the todo
+      const deferDate = new Date();
+      deferDate.setDate(deferDate.getDate() + days);
+      await updateTodo(id, { deferredUntil: deferDate.toISOString() });
+      fetchData();
+    } catch (error) {
+      console.error('Error deferring flagged item:', error);
+    }
+  };
+
+  const handleOpenDeferModal = (todo: Todo) => {
+    setDeferringTodo(todo);
+    setDeferDays('7'); // Default to 7 days
+    setShowDeferModal(true);
+  };
+
+  const handleSubmitDefer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deferringTodo) return;
+    
+    const days = parseInt(deferDays);
+    if (isNaN(days) || days < 1) {
+      alert('Please enter a valid number of days (minimum 1)');
+      return;
+    }
+    
+    await handleDeferFlaggedItem(deferringTodo.id, days);
+    setShowDeferModal(false);
+    setDeferringTodo(null);
+    setDeferDays('7');
   };
 
   const handleDeleteAllTodos = async () => {
@@ -562,24 +654,6 @@ function Home() {
     <div className="container">
       <h2 style={{ marginBottom: '2rem' }}>Dashboard</h2>
 
-      {/* Alerts Section */}
-      {expiringSubmissions.length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">⚠️ Attention Required</h3>
-          </div>
-          <div>
-            {expiringSubmissions.map((submission) => (
-              <div key={submission.id} className="alert alert-warning">
-                <strong>{submission.complianceType}</strong> - {submission.state}
-                <br />
-                Expires: {new Date(submission.expirationDate).toLocaleDateString()}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Quick Actions */}
       <div className="card">
         <h3 className="card-title" style={{ marginBottom: '1rem' }}>
@@ -607,17 +681,96 @@ function Home() {
         </div>
       </div>
 
-      {/* Todo List */}
+      {/* Flagged Items Section */}
+      {todos.filter(t => t.itemType === 'FLAGGED_ITEM').length > 0 && (
+        <div className="card">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="card-title">🚩 Flagged Items (Suggested Actions)</h3>
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#7f8c8d', padding: '0 1rem', marginBottom: '0.5rem' }}>
+            These are system-suggested actions based on upcoming deadlines and compliance requirements.
+          </div>
+          <div>
+            {todos.filter(t => t.itemType === 'FLAGGED_ITEM').map((todo) => (
+              <div
+                key={todo.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '1rem',
+                  borderBottom: '1px solid #eee',
+                  textDecoration: todo.status === 'COMPLETED' ? 'line-through' : 'none',
+                  opacity: todo.status === 'COMPLETED' ? 0.6 : 1,
+                  backgroundColor: '#fffbf0',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={todo.status === 'COMPLETED'}
+                  onChange={() => handleToggleTodo(todo)}
+                  style={{ marginRight: '1rem', cursor: 'pointer' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div>
+                    <strong>{todo.title}</strong>
+                    <span className={getPriorityBadge(todo.priority)} style={{ marginLeft: '0.5rem' }}>
+                      {todo.priority}
+                    </span>
+                  </div>
+                  {todo.description && (
+                    <div style={{ fontSize: '0.875rem', color: '#7f8c8d', marginTop: '0.25rem' }}>
+                      {todo.description}
+                    </div>
+                  )}
+                  {todo.dueDate && (
+                    <div style={{ fontSize: '0.875rem', color: '#7f8c8d', marginTop: '0.25rem' }}>
+                      Due: {new Date(todo.dueDate).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => handleOpenComplianceModal(todo)}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    title={todo.relatedSubmission ? "Renew compliance submission" : "Create compliance submission for this task"}
+                  >
+                    {todo.relatedSubmission ? '🔄 Renew' : '📋 Create'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleOpenDeferModal(todo)}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    title="Defer this item"
+                  >
+                    ⏰ Defer
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleDismissFlaggedItem(todo.id)}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                    title="Dismiss this suggestion"
+                  >
+                    ✕ Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tasks Section */}
       <div className="card">
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="card-title">📝 Your To-Do List</h3>
-          {todos.length > 0 && (
+          <h3 className="card-title">📝 Your Tasks</h3>
+          {todos.filter(t => t.itemType === 'TASK').length > 0 && (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
                 className="btn btn-danger"
                 onClick={handleDeleteCompleted}
                 style={{ padding: '0.5rem 1rem' }}
-                title="Delete completed to-do items"
+                title="Delete completed tasks"
               >
                 Delete Completed
               </button>
@@ -625,18 +778,18 @@ function Home() {
                 className="btn btn-danger"
                 onClick={handleDeleteAllTodos}
                 style={{ padding: '0.5rem 1rem' }}
-                title="Delete all to-do items"
+                title="Delete all tasks"
               >
                 Delete All
               </button>
             </div>
           )}
         </div>
-        {todos.length === 0 ? (
+        {todos.filter(t => t.itemType === 'TASK').length === 0 ? (
           <p style={{ color: '#7f8c8d' }}>No pending tasks. Great job!</p>
         ) : (
           <div>
-            {todos.map((todo) => (
+            {todos.filter(t => t.itemType === 'TASK').map((todo) => (
               <div
                 key={todo.id}
                 style={{
@@ -704,7 +857,7 @@ function Home() {
                 {selectedTodo?.relatedSubmission ? 'Renew Compliance Submission' : 'Create Compliance Submission'}
                 {selectedTodo && <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: '#7f8c8d' }}> for: {selectedTodo.title}</span>}
               </h2>
-              <button className="modal-close" onClick={handleCloseComplianceModal}>
+              <button className="modal-close" onClick={() => handleCloseComplianceModal(false)}>
                 ×
               </button>
             </div>
@@ -1171,6 +1324,75 @@ function Home() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Defer Modal */}
+      {showDeferModal && deferringTodo && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowDeferModal(false)}
+          style={{ zIndex: 1003 }}
+        >
+          <div 
+            className="modal" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '500px' }}
+          >
+            <div className="modal-header">
+              <h2 className="modal-title">
+                ⏰ Defer Flagged Item
+              </h2>
+              <button className="modal-close" onClick={() => setShowDeferModal(false)}>
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmitDefer}>
+              <div style={{ padding: '1.5rem' }}>
+                <p style={{ marginBottom: '1rem', color: '#34495e' }}>
+                  <strong>{deferringTodo.title}</strong>
+                </p>
+                <p style={{ marginBottom: '1rem', color: '#7f8c8d', fontSize: '0.9rem' }}>
+                  How many days would you like to defer this item?
+                </p>
+                
+                <div className="form-group">
+                  <label htmlFor="deferDays">Number of Days</label>
+                  <input
+                    type="number"
+                    id="deferDays"
+                    min="1"
+                    max="365"
+                    value={deferDays}
+                    onChange={(e) => setDeferDays(e.target.value)}
+                    required
+                    autoFocus
+                    style={{ width: '100%' }}
+                  />
+                  <small style={{ display: 'block', marginTop: '0.25rem', color: '#7f8c8d' }}>
+                    The item will reappear after the specified number of days.
+                  </small>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowDeferModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                >
+                  Defer
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

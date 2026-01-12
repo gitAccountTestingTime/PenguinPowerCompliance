@@ -75,6 +75,8 @@ function ComplianceSubmissions() {
   const [formData, setFormData] = useState<Submission>(emptySubmission);
   const [accountTypes, setAccountTypes] = useState<ComplianceAccountType[]>([]);
   const [filteredAccountTypes, setFilteredAccountTypes] = useState<ComplianceAccountType[]>([]);
+  const [selectedAgency, setSelectedAgency] = useState<string>('');
+  const [availableAgencies, setAvailableAgencies] = useState<string[]>([]);
   const [relatedResource, setRelatedResource] = useState<any>(null);
   const [showResourceModal, setShowResourceModal] = useState(false);
   const [scopes, setScopes] = useState<ComplianceScope[]>([]);
@@ -94,27 +96,47 @@ function ComplianceSubmissions() {
   }, []);
 
   useEffect(() => {
-    // Filter account types when state changes
+    // Filter account types when state or agency changes
     if (formData.state) {
-      const filtered = accountTypes.filter(
+      let filtered = accountTypes.filter(
         (type) => type.scope.code.toUpperCase() === formData.state.toUpperCase()
       );
+      
+      // Further filter by agency if one is selected
+      if (selectedAgency) {
+        filtered = filtered.filter((type) => type.agency === selectedAgency);
+      }
+      
       setFilteredAccountTypes(filtered);
+      
+      // Extract unique agencies for this state
+      const agencies = Array.from(
+        new Set(
+          accountTypes
+            .filter((type) => type.scope.code.toUpperCase() === formData.state.toUpperCase())
+            .map((type) => type.agency)
+        )
+      ).sort();
+      setAvailableAgencies(agencies);
       
       // Auto-populate agency if account type is selected
       if (formData.complianceAccountTypeId) {
         const selectedType = accountTypes.find(t => t.id === formData.complianceAccountTypeId);
         if (selectedType && selectedType.scope.code.toUpperCase() === formData.state.toUpperCase()) {
           setFormData(prev => ({ ...prev, stateAgency: selectedType.agency }));
+          setSelectedAgency(selectedType.agency);
         } else {
           // Clear account type if it doesn't match the state
           setFormData(prev => ({ ...prev, complianceAccountTypeId: '', stateAgency: '' }));
+          setSelectedAgency('');
         }
       }
     } else {
       setFilteredAccountTypes([]);
+      setAvailableAgencies([]);
+      setSelectedAgency('');
     }
-  }, [formData.state, accountTypes]);
+  }, [formData.state, selectedAgency, accountTypes]);
 
   useEffect(() => {
     // Fetch related resource when state and compliance type are selected
@@ -179,14 +201,18 @@ function ComplianceSubmissions() {
       // Format dates for HTML date inputs (YYYY-MM-DD)
       const formattedSubmission = {
         ...submission,
+        // If no complianceAccountTypeId, treat as 'OTHER'
+        complianceAccountTypeId: submission.complianceAccountTypeId || 'OTHER',
         submittedOn: submission.submittedOn ? new Date(submission.submittedOn).toISOString().split('T')[0] : '',
         filingDate: submission.filingDate ? new Date(submission.filingDate).toISOString().split('T')[0] : '',
         expirationDate: submission.expirationDate ? new Date(submission.expirationDate).toISOString().split('T')[0] : '',
       };
       setFormData(formattedSubmission);
+      setSelectedAgency(submission.stateAgency || '');
     } else {
       setEditingSubmission(null);
       setFormData(emptySubmission);
+      setSelectedAgency('');
     }
     setShowModal(true);
   };
@@ -202,6 +228,7 @@ function ComplianceSubmissions() {
     setEditingSubmission(null);
     setFormData(emptySubmission);
     setRelatedResource(null);
+    setSelectedAgency('');
   };
 
   const handleChange = (
@@ -210,6 +237,18 @@ function ComplianceSubmissions() {
     const { name, value } = e.target;
     
     if (name === 'complianceAccountTypeId' && value) {
+      // Handle "Other" selection
+      if (value === 'OTHER') {
+        setFormData({ 
+          ...formData, 
+          [name]: value,
+          complianceType: '',
+          stateAgency: '',
+          duration: '',
+        });
+        return;
+      }
+      
       // Auto-populate fields based on selected account type
       const selectedType = accountTypes.find(t => t.id === value);
       if (selectedType) {
@@ -221,6 +260,7 @@ function ComplianceSubmissions() {
           state: selectedType.scope.code,
           duration: selectedType.defaultDuration || '',
         });
+        setSelectedAgency(selectedType.agency);
         return;
       }
     }
@@ -244,6 +284,11 @@ function ComplianceSubmissions() {
   const shouldShowField = (fieldName: string): boolean => {
     if (!formData.complianceAccountTypeId) {
       // If no account type selected, show all fields
+      return true;
+    }
+    
+    // If "Other" is selected, show all fields
+    if (formData.complianceAccountTypeId === 'OTHER') {
       return true;
     }
     
@@ -288,7 +333,7 @@ function ComplianceSubmissions() {
         complianceType: submissionData.complianceType,
         state: submissionData.state,
         stateAgency: submissionData.stateAgency,
-        complianceAccountTypeId: submissionData.complianceAccountTypeId || null,
+        complianceAccountTypeId: submissionData.complianceAccountTypeId === 'OTHER' ? null : submissionData.complianceAccountTypeId || null,
         entityName: submissionData.entityName,
         registrationNumber: submissionData.registrationNumber,
         submittedOn: submissionData.submittedOn,
@@ -554,7 +599,7 @@ function ComplianceSubmissions() {
               <h2 className="modal-title">
                 {editingSubmission ? 'Edit Submission' : 'New Submission'}
               </h2>
-              <button className="modal-close" onClick={handleCloseModal}>
+              <button className="modal-close" onClick={() => handleCloseModal(false)}>
                 ×
               </button>
             </div>
@@ -616,17 +661,43 @@ function ComplianceSubmissions() {
                   )}
                 </div>
 
-                {/* Step 2: Select Compliance Account Type */}
+                {/* Step 2: Select Agency (Optional) */}
+                {formData.state && availableAgencies.length > 0 && (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: '1.1em', fontWeight: '600' }}>
+                      Step 2: Select Agency (Optional)
+                    </label>
+                    <select
+                      value={selectedAgency}
+                      onChange={(e) => setSelectedAgency(e.target.value)}
+                      style={{ fontSize: '1.1em' }}
+                    >
+                      <option value="">-- All Agencies --</option>
+                      {availableAgencies.map((agency) => (
+                        <option key={agency} value={agency}>
+                          {agency}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: '#7f8c8d', marginTop: '0.25rem', display: 'block' }}>
+                      {selectedAgency 
+                        ? `Showing only ${selectedAgency} compliance types` 
+                        : `${availableAgencies.length} ${availableAgencies.length === 1 ? 'agency' : 'agencies'} available for ${formData.state}`}
+                    </small>
+                  </div>
+                )}
+
+                {/* Step 3: Select Compliance Account Type */}
                 {formData.state && (
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label style={{ fontSize: '1.1em', fontWeight: '600' }}>
-                      Step 2: Select Compliance Account Type <span style={{ color: '#e74c3c' }}>*</span>
+                      Step {availableAgencies.length > 0 ? '3' : '2'}: Select Compliance Account Type <span style={{ color: '#e74c3c' }}>*</span>
                     </label>
                     <select
                       name="complianceAccountTypeId"
                       value={formData.complianceAccountTypeId || ''}
                       onChange={handleChange}
-                      required={filteredAccountTypes.length > 0}
+                      required
                       style={{ fontSize: '1.1em' }}
                     >
                       <option value="">-- Select a Compliance Account Type --</option>
@@ -635,10 +706,15 @@ function ComplianceSubmissions() {
                           {type.name} ({type.agency})
                         </option>
                       ))}
+                      <option value="OTHER">Other (Custom)</option>
                     </select>
-                    {filteredAccountTypes.length === 0 ? (
+                    {filteredAccountTypes.length === 0 && formData.complianceAccountTypeId !== 'OTHER' ? (
                       <small style={{ color: '#e67e22', marginTop: '0.25rem', display: 'block' }}>
-                        ⚠️ No compliance account types found for {formData.state}. Please select a different state or contact admin to add types.
+                        ⚠️ No compliance account types found for {formData.state}. You can select "Other" to enter a custom type.
+                      </small>
+                    ) : formData.complianceAccountTypeId === 'OTHER' ? (
+                      <small style={{ color: '#3498db', marginTop: '0.25rem', display: 'block' }}>
+                        ℹ️ You selected "Other". Please fill in the compliance type and agency below.
                       </small>
                     ) : formData.complianceAccountTypeId ? (
                       <small style={{ color: '#27ae60', marginTop: '0.25rem', display: 'block' }}>
@@ -684,28 +760,42 @@ function ComplianceSubmissions() {
                 {formData.complianceAccountTypeId && (
                   <>
                     <div className="form-group">
-                      <label>Compliance Type (Auto-filled)</label>
+                      <label>
+                        Compliance Type
+                        {formData.complianceAccountTypeId === 'OTHER' ? 
+                          ' (Custom)' : ' (Auto-filled)'}
+                        {formData.complianceAccountTypeId === 'OTHER' && 
+                          <span style={{ color: '#e74c3c' }}> *</span>}
+                      </label>
                       <input
                         type="text"
                         name="complianceType"
                         value={formData.complianceType}
                         onChange={handleChange}
                         required
-                        readOnly
-                        style={{ backgroundColor: '#ecf0f1' }}
+                        readOnly={formData.complianceAccountTypeId !== 'OTHER'}
+                        placeholder={formData.complianceAccountTypeId === 'OTHER' ? 'Enter custom compliance type' : ''}
+                        style={{ backgroundColor: formData.complianceAccountTypeId !== 'OTHER' ? '#ecf0f1' : 'white' }}
                       />
                     </div>
 
                     <div className="form-group">
-                      <label>State Agency (Auto-filled)</label>
+                      <label>
+                        State Agency
+                        {formData.complianceAccountTypeId === 'OTHER' ? 
+                          ' (Custom)' : ' (Auto-filled)'}
+                        {formData.complianceAccountTypeId === 'OTHER' && 
+                          <span style={{ color: '#e74c3c' }}> *</span>}
+                      </label>
                       <input
                         type="text"
                         name="stateAgency"
                         value={formData.stateAgency}
                         onChange={handleChange}
                         required
-                        readOnly
-                        style={{ backgroundColor: '#ecf0f1' }}
+                        readOnly={formData.complianceAccountTypeId !== 'OTHER'}
+                        placeholder={formData.complianceAccountTypeId === 'OTHER' ? 'Enter custom agency name' : ''}
+                        style={{ backgroundColor: formData.complianceAccountTypeId !== 'OTHER' ? '#ecf0f1' : 'white' }}
                       />
                     </div>
 

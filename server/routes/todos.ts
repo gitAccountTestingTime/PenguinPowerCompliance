@@ -9,8 +9,21 @@ const prisma = new PrismaClient();
 router.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
     const todos = await prisma.todoItem.findMany({
-      where: { userId: req.userId },
+      where: { 
+        userId: req.userId,
+        // Don't show dismissed or deferred items
+        AND: [
+          { dismissedAt: null },
+          {
+            OR: [
+              { deferredUntil: null },
+              { deferredUntil: { lte: new Date() } }
+            ]
+          }
+        ]
+      },
       orderBy: [
+        { itemType: 'desc' }, // TASK before FLAGGED_ITEM
         { status: 'asc' },
         { priority: 'desc' },
         { dueDate: 'asc' },
@@ -29,13 +42,14 @@ router.get('/', authenticate, async (req: AuthRequest, res) => {
 // Create todo
 router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { title, description, priority, dueDate, relatedSubmissionId } = req.body;
+    const { title, description, priority, dueDate, relatedSubmissionId, itemType } = req.body;
     
     const todo = await prisma.todoItem.create({
       data: {
         title,
         description,
         priority: priority || 'MEDIUM',
+        itemType: itemType || 'TASK', // Default to TASK for user-created items
         dueDate: dueDate ? new Date(dueDate) : null,
         userId: req.userId!,
         relatedSubmissionId,
@@ -53,7 +67,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 router.put('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { title, description, priority, status, dueDate } = req.body;
+    const { title, description, priority, status, dueDate, dismissedAt, deferredUntil } = req.body;
     
     const todo = await prisma.todoItem.update({
       where: { id, userId: req.userId },
@@ -63,6 +77,8 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
         ...(priority && { priority }),
         ...(status && { status }),
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+        ...(dismissedAt !== undefined && { dismissedAt: dismissedAt ? new Date(dismissedAt) : null }),
+        ...(deferredUntil !== undefined && { deferredUntil: deferredUntil ? new Date(deferredUntil) : null }),
       },
     });
     
