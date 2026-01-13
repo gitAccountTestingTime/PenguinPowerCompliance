@@ -103,7 +103,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 
     // Validate complianceAccountTypeId if provided
     let validatedAccountTypeId = null;
-    if (complianceAccountTypeId) {
+    if (complianceAccountTypeId && complianceAccountTypeId !== '' && complianceAccountTypeId !== 'OTHER') {
       const accountType = await prisma.complianceAccountType.findUnique({
         where: { id: complianceAccountTypeId },
       });
@@ -149,13 +149,18 @@ router.put('/:id', authenticate, async (req: AuthRequest, res) => {
     const data = req.body;
 
     // Validate complianceAccountTypeId if provided in the update
-    if (data.complianceAccountTypeId !== undefined && data.complianceAccountTypeId !== null) {
+    if (data.complianceAccountTypeId !== undefined && data.complianceAccountTypeId !== null && data.complianceAccountTypeId !== '' && data.complianceAccountTypeId !== 'OTHER') {
       const accountType = await prisma.complianceAccountType.findUnique({
         where: { id: data.complianceAccountTypeId },
       });
       if (!accountType) {
         return res.status(400).json({ error: 'Invalid compliance account type ID' });
       }
+    }
+    
+    // Convert empty string to null for foreign key field
+    if (data.complianceAccountTypeId === '' || data.complianceAccountTypeId === 'OTHER') {
+      data.complianceAccountTypeId = null;
     }
 
     // Convert date strings to Date objects
